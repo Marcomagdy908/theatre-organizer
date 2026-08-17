@@ -17,17 +17,7 @@ import {
   runTransaction as firestoreRunTransaction, 
   writeBatch 
 } from 'firebase/firestore';
-// Production Realtime Database Configuration for SEF_امرا جديدا
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyC3o6pjdT9dX6kjWtp8X2T4cNasI9xlMIU",
-  authDomain: "theatre-d3b45.firebaseapp.com",
-  databaseURL: "https://theatre-d3b45-default-rtdb.firebaseio.com",
-  projectId: "theatre-d3b45",
-  storageBucket: "theatre-d3b45.firebasestorage.app",
-  messagingSenderId: "49926890858",
-  appId: "1:49926890858:web:eb90c3225dc2945a80b113",
-  measurementId: "G-CKBTZRJFKE"
-};
+import { LOCK_TTL_MS, generateInitialSeats, EVENT_ID, EVENT_TITLE } from '../utils/constants.js';
 
 const STORAGE_KEY_SEATS = 'theatre_sef_amran_jadidan_seats_v1';
 const STORAGE_KEY_LOGS = 'theatre_sef_amran_jadidan_logs_v1';
@@ -35,7 +25,7 @@ const STORAGE_KEY_FIREBASE_CONFIG = 'theatre_firebase_config_v1';
 
 class SyncEngine {
   constructor() {
-    this.mode = 'rtdb'; // Connect to Firebase Realtime Database automatically
+    this.mode = 'mesh'; // Will switch to 'rtdb' automatically when environment variables are present
     this.seats = {};
     this.logs = [];
     this.listeners = new Set();
@@ -72,24 +62,38 @@ class SyncEngine {
     }
   }
 
-  // Automatically connect to Firebase Cloud Realtime Database
+  // Automatically read Firebase credentials from environment variables (.env / Vercel Environment Variables)
   loadFirebaseConfig() {
     try {
-      const activeConfig = {
-        apiKey: (import.meta.env.VITE_FIREBASE_API_KEY || FIREBASE_CONFIG.apiKey).trim(),
-        authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || FIREBASE_CONFIG.authDomain).trim(),
-        databaseURL: (import.meta.env.VITE_FIREBASE_DATABASE_URL || FIREBASE_CONFIG.databaseURL).trim(),
-        projectId: (import.meta.env.VITE_FIREBASE_PROJECT_ID || FIREBASE_CONFIG.projectId).trim(),
-        storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || FIREBASE_CONFIG.storageBucket).trim(),
-        messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || FIREBASE_CONFIG.messagingSenderId).trim(),
-        appId: (import.meta.env.VITE_FIREBASE_APP_ID || FIREBASE_CONFIG.appId).trim(),
-        measurementId: (import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || FIREBASE_CONFIG.measurementId)?.trim()
-      };
+      const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+      const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
 
-      this.initFirebase(activeConfig);
+      if (apiKey && projectId && apiKey.trim() !== '') {
+        const config = {
+          apiKey: apiKey.trim(),
+          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || `${projectId.trim()}.firebaseapp.com`,
+          databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL?.trim() || `https://${projectId.trim()}-default-rtdb.firebaseio.com`,
+          projectId: projectId.trim(),
+          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || `${projectId.trim()}.firebasestorage.app`,
+          messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || '',
+          appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() || '',
+          measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID?.trim() || undefined
+        };
+
+        this.initFirebase(config);
+        return;
+      }
+
+      // Check localStorage if previously configured
+      const saved = localStorage.getItem(STORAGE_KEY_FIREBASE_CONFIG);
+      if (saved) {
+        const config = JSON.parse(saved);
+        if (config && config.apiKey && config.projectId) {
+          this.initFirebase(config);
+        }
+      }
     } catch (e) {
-      console.warn('Auto Firebase init failed, trying direct default:', e);
-      this.initFirebase(FIREBASE_CONFIG);
+      console.warn('Could not load environment config:', e);
     }
   }
 
