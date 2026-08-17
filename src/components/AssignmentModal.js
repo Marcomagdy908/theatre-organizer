@@ -109,14 +109,11 @@ export class AssignmentModal {
             </div>
 
             <!-- Modal Action Buttons -->
-            <div class="modal-actions">
+            <div class="modal-actions space-between">
               <button type="button" class="btn btn-ghost" id="assign-cancel-btn">
                 Release Hold
               </button>
               <div class="action-group-right">
-                <button type="submit" class="btn btn-secondary" id="assign-checkin-btn">
-                  Reserve & Check-In
-                </button>
                 <button type="submit" class="btn btn-primary" id="assign-confirm-btn">
                   Confirm Reservation
                 </button>
@@ -134,7 +131,6 @@ export class AssignmentModal {
     const cancelBtn = this.container.querySelector('#assign-cancel-btn');
     const regenBtn = this.container.querySelector('#assign-regen-btn');
     const form = this.container.querySelector('#assign-form');
-    const checkinBtn = this.container.querySelector('#assign-checkin-btn');
 
     const handleClose = () => {
       if (this.currentSeat && this.currentOrganizer) {
@@ -154,11 +150,6 @@ export class AssignmentModal {
     regenBtn.addEventListener('click', () => {
       this.ticketId = generateTicketId();
       this.container.querySelector('#assign-ticket-id').value = this.ticketId;
-    });
-
-    let isAutoCheckIn = false;
-    checkinBtn.addEventListener('click', () => {
-      isAutoCheckIn = true;
     });
 
     form.addEventListener('submit', async (e) => {
@@ -181,19 +172,21 @@ export class AssignmentModal {
         this.currentSeat.id, 
         attendeeData, 
         this.currentOrganizer, 
-        isAutoCheckIn
+        false
       );
 
       if (result.success) {
         toast.success(
-          isAutoCheckIn ? 'Reserved & Checked In!' : 'Seat Reserved!',
+          'Seat Reserved!',
           `Seat ${this.currentSeat.seatCode} assigned to ${attendeeData.name} (${attendeeData.ticketId})`
         );
-        this.close(true);
+        this.stopHoldTimer();
+        this.close();
         if (this.onComplete) this.onComplete(result.seat);
       } else {
         toast.conflict(result.error);
-        this.close(true);
+        this.stopHoldTimer();
+        this.close();
       }
     });
   }

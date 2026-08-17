@@ -70,11 +70,6 @@ export class Toolbar {
               <span>Reserved</span>
               <span class="pill-count" id="count-res">0</span>
             </button>
-            <button type="button" class="filter-pill pill-check" data-filter="checked_in">
-              <span class="pill-dot dot-check"></span>
-              <span>Checked In</span>
-              <span class="pill-count" id="count-check">0</span>
-            </button>
           </div>
         </div>
       </div>
@@ -133,19 +128,16 @@ export class Toolbar {
     const total = seatArr.length;
     const avail = seatArr.filter(s => s.status === 'available').length;
     const locked = seatArr.filter(s => s.status === 'locked').length;
-    const res = seatArr.filter(s => s.status === 'reserved').length;
-    const checked = seatArr.filter(s => s.status === 'checked_in').length;
+    const res = seatArr.filter(s => s.status === 'reserved' || s.status === 'checked_in').length;
 
     const countAll = this.container.querySelector('#count-all');
     const countAvail = this.container.querySelector('#count-avail');
     const countLocked = this.container.querySelector('#count-locked');
     const countRes = this.container.querySelector('#count-res');
-    const countCheck = this.container.querySelector('#count-check');
 
     if (countAll) countAll.textContent = total;
     if (countAvail) countAvail.textContent = avail;
     if (countLocked) countLocked.textContent = locked;
     if (countRes) countRes.textContent = res;
-    if (countCheck) countCheck.textContent = checked;
   }
 }

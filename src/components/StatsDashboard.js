@@ -1,4 +1,4 @@
-// Stats Dashboard Component (Occupancy, Check-In % & Capacity)
+// Stats Dashboard Component (Total Capacity, Available Seats & Reserved Seats)
 
 export class StatsDashboard {
   constructor(containerId) {
@@ -17,33 +17,31 @@ export class StatsDashboard {
           <div class="stat-content">
             <div class="stat-label">Total Venue Capacity</div>
             <div class="stat-value" id="stat-capacity">0 Seats</div>
-            <div class="stat-trend text-muted" id="stat-available-sub">0 Available</div>
+            <div class="stat-trend text-muted">Rows A – Q</div>
           </div>
         </div>
 
-        <!-- Occupancy Rate Card -->
+        <!-- Available Seats Card -->
         <div class="stat-card">
           <div class="stat-icon-wrap bg-emerald-subtle">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
           </div>
           <div class="stat-content">
-            <div class="stat-label">Occupancy Rate</div>
-            <div class="stat-value" id="stat-occupancy">0%</div>
-            <div class="stat-progress-bar">
-              <div class="stat-progress-fill" id="stat-occupancy-bar" style="width: 0%;"></div>
-            </div>
+            <div class="stat-label">Available Seats</div>
+            <div class="stat-value text-emerald" id="stat-available" style="color: #10B981;">0</div>
+            <div class="stat-trend text-muted" id="stat-available-sub">Ready for assignment</div>
           </div>
         </div>
 
-        <!-- Front of House Check-In Card -->
+        <!-- Reserved Seats Card -->
         <div class="stat-card">
           <div class="stat-icon-wrap bg-purple-subtle">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           </div>
           <div class="stat-content">
-            <div class="stat-label">Venue Gate Check-In</div>
-            <div class="stat-value text-purple" id="stat-checkin">0 / 0</div>
-            <div class="stat-trend text-muted" id="stat-checkin-percent">0% of booked guests admitted</div>
+            <div class="stat-label">Assigned Reservations</div>
+            <div class="stat-value text-purple" id="stat-reserved">0</div>
+            <div class="stat-trend text-muted" id="stat-reserved-sub">0 Held by organizers</div>
           </div>
         </div>
       </div>
@@ -52,28 +50,21 @@ export class StatsDashboard {
 
   update(seats) {
     const seatArr = Object.values(seats);
-    const total = seatArr.length || 1;
+    const total = seatArr.length || 0;
     const avail = seatArr.filter(s => s.status === 'available').length;
     const locked = seatArr.filter(s => s.status === 'locked').length;
-    const reserved = seatArr.filter(s => s.status === 'reserved').length;
-    const checkedIn = seatArr.filter(s => s.status === 'checked_in').length;
-
-    const bookedCount = reserved + checkedIn;
-    const occupancyPct = Math.round((bookedCount / total) * 100);
-    const checkinPct = bookedCount > 0 ? Math.round((checkedIn / bookedCount) * 100) : 0;
+    const reserved = seatArr.filter(s => s.status === 'reserved' || s.status === 'checked_in').length;
 
     const capEl = this.container.querySelector('#stat-capacity');
+    const availEl = this.container.querySelector('#stat-available');
     const availSubEl = this.container.querySelector('#stat-available-sub');
-    const occEl = this.container.querySelector('#stat-occupancy');
-    const occBar = this.container.querySelector('#stat-occupancy-bar');
-    const checkinEl = this.container.querySelector('#stat-checkin');
-    const checkinSubEl = this.container.querySelector('#stat-checkin-percent');
+    const resEl = this.container.querySelector('#stat-reserved');
+    const resSubEl = this.container.querySelector('#stat-reserved-sub');
 
     if (capEl) capEl.textContent = `${total} Seats`;
-    if (availSubEl) availSubEl.textContent = `${avail} Available (${locked} currently held)`;
-    if (occEl) occEl.textContent = `${occupancyPct}%`;
-    if (occBar) occBar.style.width = `${occupancyPct}%`;
-    if (checkinEl) checkinEl.textContent = `${checkedIn} / ${bookedCount}`;
-    if (checkinSubEl) checkinSubEl.textContent = `${checkinPct}% of booked guests admitted`;
+    if (availEl) availEl.textContent = `${avail}`;
+    if (availSubEl) availSubEl.textContent = `${avail} seats open`;
+    if (resEl) resEl.textContent = `${reserved}`;
+    if (resSubEl) resSubEl.textContent = `${locked} currently held by organizers`;
   }
 }
