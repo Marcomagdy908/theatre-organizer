@@ -19,24 +19,13 @@ import {
 } from 'firebase/firestore';
 import { LOCK_TTL_MS, generateInitialSeats, EVENT_ID, EVENT_TITLE } from '../utils/constants.js';
 
-export const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyC3o6pjdT9dX6kjWtp8X2T4cNasI9xlMIU",
-  authDomain: "theatre-d3b45.firebaseapp.com",
-  databaseURL: "https://theatre-d3b45-default-rtdb.firebaseio.com",
-  projectId: "theatre-d3b45",
-  storageBucket: "theatre-d3b45.firebasestorage.app",
-  messagingSenderId: "49926890858",
-  appId: "1:49926890858:web:eb90c3225dc2945a80b113",
-  measurementId: "G-CKBTZRJFKE"
-};
-
 const STORAGE_KEY_SEATS = 'theatre_sef_amran_jadidan_seats_v1';
 const STORAGE_KEY_LOGS = 'theatre_sef_amran_jadidan_logs_v1';
 const STORAGE_KEY_FIREBASE_CONFIG = 'theatre_firebase_config_v1';
 
 class SyncEngine {
   constructor() {
-    this.mode = 'rtdb'; // 'rtdb' | 'firestore' | 'mesh'
+    this.mode = 'mesh'; // 'rtdb' | 'firestore' | 'mesh'
     this.seats = {};
     this.logs = [];
     this.listeners = new Set();
@@ -73,24 +62,38 @@ class SyncEngine {
     }
   }
 
-  // Load Firebase config (Prioritizes built-in production credentials for 100% turnkey deploy)
+  // Load Firebase config strictly from environment variables (.env) or user settings in localStorage
   loadFirebaseConfig() {
     try {
-      const config = {
-        apiKey: (import.meta.env.VITE_FIREBASE_API_KEY || DEFAULT_FIREBASE_CONFIG.apiKey).trim(),
-        authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || DEFAULT_FIREBASE_CONFIG.authDomain).trim(),
-        databaseURL: (import.meta.env.VITE_FIREBASE_DATABASE_URL || DEFAULT_FIREBASE_CONFIG.databaseURL).trim(),
-        projectId: (import.meta.env.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_CONFIG.projectId).trim(),
-        storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || DEFAULT_FIREBASE_CONFIG.storageBucket).trim(),
-        messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || DEFAULT_FIREBASE_CONFIG.messagingSenderId).trim(),
-        appId: (import.meta.env.VITE_FIREBASE_APP_ID || DEFAULT_FIREBASE_CONFIG.appId).trim(),
-        measurementId: (import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || DEFAULT_FIREBASE_CONFIG.measurementId)?.trim()
-      };
+      // 1. Check Vite Environment Variables (.env)
+      const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+      const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
 
-      this.initFirebase(config);
+      if (envApiKey && envProjectId && envApiKey.trim() !== '') {
+        const envConfig = {
+          apiKey: envApiKey.trim(),
+          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || `${envProjectId.trim()}.firebaseapp.com`,
+          databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL?.trim() || `https://${envProjectId.trim()}-default-rtdb.firebaseio.com`,
+          projectId: envProjectId.trim(),
+          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || `${envProjectId.trim()}.firebasestorage.app`,
+          messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || '',
+          appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() || '',
+          measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID?.trim() || undefined
+        };
+        this.initFirebase(envConfig);
+        return;
+      }
+
+      // 2. Check localStorage saved config from UI modal
+      const saved = localStorage.getItem(STORAGE_KEY_FIREBASE_CONFIG);
+      if (saved) {
+        const config = JSON.parse(saved);
+        if (config && config.apiKey && config.projectId) {
+          this.initFirebase(config);
+        }
+      }
     } catch (e) {
-      console.warn('Could not load Firebase config, falling back to built-in:', e);
-      this.initFirebase(DEFAULT_FIREBASE_CONFIG);
+      console.warn('Could not load Firebase config:', e);
     }
   }
 
