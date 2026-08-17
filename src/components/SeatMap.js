@@ -1,6 +1,6 @@
 // Interactive Visual Theater Grid Component
 // Renders Exact Theater Layout: Rows A-Q with Left Wing (Odds), Center Section, and Right Wing (Evens)
-// Supports Responsive Mobile Views & Wing Focused Navigation
+// Supports Mobile Touch Scaling, Zoom Controls & Column Wing Focused Views
 import { THEATER_ROW_DEFINITIONS } from '../utils/constants.js';
 
 export class SeatMap {
@@ -9,6 +9,7 @@ export class SeatMap {
     this.seats = {};
     this.activeSection = 'all'; // 'all' | 'part1' | 'part2'
     this.activeWing = 'all'; // 'all' | 'left' | 'center' | 'right'
+    this.zoomLevel = 1.0; // 0.75, 1.0, 1.25
     this.statusFilter = 'all'; // 'all' | 'available' | 'locked' | 'reserved' | 'checked_in'
     this.highlightedSeatId = null;
     this.currentOrganizer = options.currentOrganizer || null;
@@ -71,6 +72,18 @@ export class SeatMap {
     this.render();
   }
 
+  setZoom(zoom) {
+    this.zoomLevel = zoom;
+    const gridWrapper = this.container.querySelector('.theater-seating-scroll-wrapper');
+    if (gridWrapper) {
+      gridWrapper.style.setProperty('--grid-zoom', zoom);
+    }
+    const zoomPills = this.container.querySelectorAll('.zoom-btn');
+    zoomPills.forEach(btn => {
+      btn.classList.toggle('active', parseFloat(btn.dataset.zoom) === zoom);
+    });
+  }
+
   setStatusFilter(filter) {
     this.statusFilter = filter;
     this.render();
@@ -116,21 +129,36 @@ export class SeatMap {
         </div>
       </div>
 
-      <!-- Mobile & Responsive Wing Focus Selector -->
-      <div class="wing-focus-nav">
-        <span class="wing-nav-label">Column View:</span>
-        <div class="wing-pills-group">
-          <button type="button" class="wing-pill ${this.activeWing === 'all' ? 'active' : ''}" data-wing="all">
-            All Columns
+      <!-- Mobile & Responsive Controls Bar -->
+      <div class="grid-controls-bar">
+        <!-- Wing Focus Navigation (Especially handy on Mobile) -->
+        <div class="wing-focus-nav">
+          <div class="wing-pills-group">
+            <button type="button" class="wing-pill ${this.activeWing === 'all' ? 'active' : ''}" data-wing="all">
+              All Columns
+            </button>
+            <button type="button" class="wing-pill ${this.activeWing === 'left' ? 'active' : ''}" data-wing="left">
+              Left (Odds)
+            </button>
+            <button type="button" class="wing-pill ${this.activeWing === 'center' ? 'active' : ''}" data-wing="center">
+              Center
+            </button>
+            <button type="button" class="wing-pill ${this.activeWing === 'right' ? 'active' : ''}" data-wing="right">
+              Right (Evens)
+            </button>
+          </div>
+        </div>
+
+        <!-- Mobile Touch Scale Zoom Controller -->
+        <div class="zoom-controls-group">
+          <button type="button" class="zoom-btn ${this.zoomLevel === 0.8 ? 'active' : ''}" data-zoom="0.8" title="Fit Overview">
+            Fit
           </button>
-          <button type="button" class="wing-pill ${this.activeWing === 'left' ? 'active' : ''}" data-wing="left">
-            Left (Odds 11–31)
+          <button type="button" class="zoom-btn ${this.zoomLevel === 1.0 ? 'active' : ''}" data-zoom="1.0" title="Normal 100%">
+            1x
           </button>
-          <button type="button" class="wing-pill ${this.activeWing === 'center' ? 'active' : ''}" data-wing="center">
-            Center (1–10)
-          </button>
-          <button type="button" class="wing-pill ${this.activeWing === 'right' ? 'active' : ''}" data-wing="right">
-            Right (Evens 10–30)
+          <button type="button" class="zoom-btn ${this.zoomLevel === 1.25 ? 'active' : ''}" data-zoom="1.25" title="Large Touch (Easy Tap)">
+            Large
           </button>
         </div>
       </div>
@@ -151,21 +179,33 @@ export class SeatMap {
         </div>
       </div>
 
-      <div class="theater-seating-layout">
-        ${this.renderPart('Part 1: Front Section (Rows A – H)', rowsToRender.filter(r => ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].includes(r.row)))}
-        ${this.renderPart('Part 2: Rear Section (Rows I – Q)', rowsToRender.filter(r => ['I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'].includes(r.row)))}
+      <!-- Scrollable Grid Container with Dynamic Zoom -->
+      <div class="theater-seating-scroll-wrapper" style="--grid-zoom: ${this.zoomLevel};">
+        <div class="theater-seating-layout ${this.activeWing !== 'all' ? 'is-focused-wing' : ''}">
+          ${this.renderPart('Part 1: Front Section (Rows A – H)', rowsToRender.filter(r => ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].includes(r.row)))}
+          ${this.renderPart('Part 2: Rear Section (Rows I – Q)', rowsToRender.filter(r => ['I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q'].includes(r.row)))}
+        </div>
       </div>
     `;
 
     this.bindSeatEvents();
-    this.bindWingNavEvents();
+    this.bindControlsEvents();
   }
 
-  bindWingNavEvents() {
+  bindControlsEvents() {
+    // Wing tabs
     const pills = this.container.querySelectorAll('.wing-pill');
     pills.forEach(pill => {
       pill.addEventListener('click', () => {
         this.setWing(pill.dataset.wing);
+      });
+    });
+
+    // Zoom buttons
+    const zoomBtns = this.container.querySelectorAll('.zoom-btn');
+    zoomBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.setZoom(parseFloat(btn.dataset.zoom));
       });
     });
   }
@@ -191,7 +231,7 @@ export class SeatMap {
             <span class="section-indicator ${isFront ? 'vip-gold' : ''}"></span>
             <h3 class="section-title">${partTitle}</h3>
           </div>
-          <span class="section-badge">${isFront ? 'Front Rows' : 'Rear Rows'}</span>
+          <span class="section-badge">${isFront ? 'Front Tier' : 'Rear Tier'}</span>
         </div>
 
         <div class="section-grid">
@@ -223,14 +263,14 @@ export class SeatMap {
           </div>
         ` : ''}
 
-        <!-- Left Aisle (if showing multiple columns) -->
+        <!-- Left Aisle -->
         ${showLeft && showCenter ? `
           <div class="row-aisle">
             <span class="aisle-marker">|</span>
           </div>
         ` : ''}
 
-        <!-- 2. Center Section (or Gap if empty) -->
+        <!-- 2. Center Section -->
         ${showCenter ? `
           <div class="wing-group wing-center ${center.length === 0 ? 'wing-center-empty' : ''}">
             ${center.length > 0 ? `
@@ -248,7 +288,7 @@ export class SeatMap {
           </div>
         ` : ''}
 
-        <!-- Right Aisle (if showing multiple columns) -->
+        <!-- Right Aisle -->
         ${showCenter && showRight ? `
           <div class="row-aisle">
             <span class="aisle-marker">|</span>
