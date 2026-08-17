@@ -1,14 +1,21 @@
-// Real-Time Synchronization & Concurrency Engine (Firebase Firestore + Multi-Tab Live Mesh)
+// Real-Time Synchronization & Concurrency Engine
+// Supports: Firebase Realtime Database (RTDB) + Firestore + Local Multi-Tab Mesh
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import { 
+  getDatabase, 
+  ref as dbRef, 
+  onValue, 
+  set as dbSet, 
+  update as dbUpdate, 
+  runTransaction as rtdbRunTransaction 
+} from 'firebase/database';
 import { 
   getFirestore, 
   collection, 
   doc, 
   onSnapshot, 
-  runTransaction, 
-  getDoc,
-  setDoc,
-  writeBatch
+  runTransaction as firestoreRunTransaction, 
+  writeBatch 
 } from 'firebase/firestore';
 import { LOCK_TTL_MS, generateInitialSeats, EVENT_ID, EVENT_TITLE } from '../utils/constants.js';
 
@@ -18,13 +25,14 @@ const STORAGE_KEY_FIREBASE_CONFIG = 'theatre_firebase_config_v1';
 
 class SyncEngine {
   constructor() {
-    this.mode = 'mesh'; // 'firebase' or 'mesh' (BroadcastChannel + LocalStorage)
+    this.mode = 'mesh'; // 'rtdb' | 'firestore' | 'mesh'
     this.seats = {};
     this.logs = [];
     this.listeners = new Set();
     this.firebaseApp = null;
+    this.rtdb = null;
     this.firestore = null;
-    this.unsubscribeFirestore = null;
+    this.unsubscribeRealtime = null;
     this.broadcastChannel = null;
 
     this.initBroadcastChannel();
@@ -65,7 +73,7 @@ class SyncEngine {
         const envConfig = {
           apiKey: envApiKey.trim(),
           authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || `${envProjectId.trim()}.firebaseapp.com`,
-          databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL?.trim() || undefined,
+          databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL?.trim() || `https://${envProjectId.trim()}-default-rtdb.firebaseio.com`,
           projectId: envProjectId.trim(),
           storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || `${envProjectId.trim()}.firebasestorage.app`,
           messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || '',
@@ -89,27 +97,70 @@ class SyncEngine {
     }
   }
 
-  // Connect to live Firebase Firestore
+  // Connect to Firebase Realtime Database (RTDB) with Firestore fallback
   async initFirebase(config) {
     try {
-      if (this.unsubscribeFirestore) {
-        this.unsubscribeFirestore();
+      if (this.unsubscribeRealtime) {
+        this.unsubscribeRealtime();
       }
 
       this.firebaseApp = getApps().length === 0 ? initializeApp(config) : getApp();
-      this.firestore = getFirestore(this.firebaseApp);
-      this.mode = 'firebase';
       localStorage.setItem(STORAGE_KEY_FIREBASE_CONFIG, JSON.stringify(config));
 
-      // Listen to Firestore real-time snapshot
+      // 1. Try Firebase Realtime Database (RTDB) first if databaseURL is provided
+      if (config.databaseURL) {
+        try {
+          this.rtdb = getDatabase(this.firebaseApp, config.databaseURL);
+          const seatsPath = `theater_events/${EVENT_ID}/seats`;
+          const seatsDbRef = dbRef(this.rtdb, seatsPath);
+
+          // Realtime listener
+          this.unsubscribeRealtime = onValue(seatsDbRef, (snapshot) => {
+            const data = snapshot.val();
+            if (!data) {
+              this.seedRTDB();
+              return;
+            }
+            this.seats = data;
+            this.notifyListeners();
+          }, (err) => {
+            console.warn('RTDB onValue error, trying Firestore...', err);
+            this.fallbackToFirestore(config);
+          });
+
+          this.mode = 'rtdb';
+          this.addLog({
+            id: 'log_' + Date.now(),
+            time: Date.now(),
+            type: 'system',
+            text: `Connected to Firebase Realtime Database (${config.projectId})`
+          });
+          this.notifyListeners();
+          return { success: true, mode: 'rtdb' };
+        } catch (rtdbErr) {
+          console.warn('RTDB init error:', rtdbErr);
+          return this.fallbackToFirestore(config);
+        }
+      } else {
+        return this.fallbackToFirestore(config);
+      }
+    } catch (error) {
+      console.error('Firebase initialization failed:', error);
+      this.mode = 'mesh';
+      return { success: false, error: error.message };
+    }
+  }
+
+  // Fallback to Cloud Firestore
+  async fallbackToFirestore(config) {
+    try {
+      this.firestore = getFirestore(this.firebaseApp);
       const seatsCol = collection(this.firestore, 'theater_events', EVENT_ID, 'seats');
-      this.unsubscribeFirestore = onSnapshot(seatsCol, (snapshot) => {
+      this.unsubscribeRealtime = onSnapshot(seatsCol, (snapshot) => {
         if (snapshot.empty) {
-          // If Firestore is empty, seed initial seats
           this.seedFirestore();
           return;
         }
-
         const newSeats = {};
         snapshot.forEach((docSnap) => {
           newSeats[docSnap.id] = docSnap.data();
@@ -122,27 +173,28 @@ class SyncEngine {
         this.notifyListeners();
       });
 
+      this.mode = 'firestore';
       this.addLog({
         id: 'log_' + Date.now(),
         time: Date.now(),
         type: 'system',
-        text: `Connected to Live Firebase Firestore (${config.projectId})`
+        text: `Connected to Firebase Firestore (${config.projectId})`
       });
-
-      return { success: true };
-    } catch (error) {
-      console.error('Firebase initialization failed:', error);
+      this.notifyListeners();
+      return { success: true, mode: 'firestore' };
+    } catch (err) {
       this.mode = 'mesh';
-      return { success: false, error: error.message };
+      return { success: false, error: err.message };
     }
   }
 
   // Disconnect Firebase and revert to local mesh
   disconnectFirebase() {
-    if (this.unsubscribeFirestore) {
-      this.unsubscribeFirestore();
-      this.unsubscribeFirestore = null;
+    if (this.unsubscribeRealtime) {
+      this.unsubscribeRealtime();
+      this.unsubscribeRealtime = null;
     }
+    this.rtdb = null;
     this.firestore = null;
     this.firebaseApp = null;
     this.mode = 'mesh';
@@ -157,18 +209,29 @@ class SyncEngine {
     this.notifyListeners();
   }
 
-  // Seed Firestore with initial venue layout
+  // Seed Realtime Database
+  async seedRTDB() {
+    if (!this.rtdb) return;
+    try {
+      const initial = generateInitialSeats();
+      const seatsDbRef = dbRef(this.rtdb, `theater_events/${EVENT_ID}/seats`);
+      await dbSet(seatsDbRef, initial);
+      console.log(`Successfully seeded Firebase RTDB for ${EVENT_TITLE}`);
+    } catch (e) {
+      console.error('Failed to seed RTDB:', e);
+    }
+  }
+
+  // Seed Firestore
   async seedFirestore() {
     if (!this.firestore) return;
     try {
       const initial = generateInitialSeats();
       const batch = writeBatch(this.firestore);
-      
       Object.values(initial).forEach((seat) => {
-        const seatRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seat.id);
-        batch.set(seatRef, seat);
+        const seatDocRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seat.id);
+        batch.set(seatDocRef, seat);
       });
-
       await batch.commit();
       console.log(`Successfully seeded Firestore for ${EVENT_TITLE}`);
     } catch (e) {
@@ -223,7 +286,6 @@ class SyncEngine {
       Object.values(this.seats).forEach((seat) => {
         if (seat.status === 'locked' && seat.lockedUntil && seat.lockedUntil < now) {
           seat.status = 'available';
-          const expiredOrganizer = seat.lockedBy ? seat.lockedBy.name : 'Unknown';
           seat.lockedBy = null;
           seat.lockedUntil = null;
           seat.updatedAt = now;
@@ -233,8 +295,29 @@ class SyncEngine {
             id: 'log_' + Date.now() + '_' + seat.id,
             time: now,
             type: 'lock_expire',
-            text: `Hold on Seat ${seat.seatCode} expired (released by auto-TTL)`
+            text: `Hold on Seat ${seat.seatCode} expired (auto-released)`
           });
+
+          // Sync lock expiration to RTDB / Firestore
+          if (this.mode === 'rtdb' && this.rtdb) {
+            const seatDbRef = dbRef(this.rtdb, `theater_events/${EVENT_ID}/seats/${seat.id}`);
+            dbUpdate(seatDbRef, {
+              status: 'available',
+              lockedBy: null,
+              lockedUntil: null,
+              updatedAt: now
+            }).catch(() => {});
+          } else if (this.mode === 'firestore' && this.firestore) {
+            const seatDocRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seat.id);
+            firestoreRunTransaction(this.firestore, async (t) => {
+              t.update(seatDocRef, {
+                status: 'available',
+                lockedBy: null,
+                lockedUntil: null,
+                updatedAt: now
+              });
+            }).catch(() => {});
+          }
         }
       });
 
@@ -246,24 +329,72 @@ class SyncEngine {
     }, 1000);
   }
 
-  // Concurrency Principle 1: Atomic Lock Acquisition
+  // 1. Atomic Lock Acquisition (60-second TTL)
   async acquireSeatLock(seatId, organizer) {
     const now = Date.now();
     const lockedUntil = now + LOCK_TTL_MS;
 
-    if (this.mode === 'firebase' && this.firestore) {
+    // A. Firebase Realtime Database (RTDB) Atomic Transaction
+    if (this.mode === 'rtdb' && this.rtdb) {
       try {
-        const seatRef = doc(this.firestore, 'theater_events', 'evt_grand_theater_2026', 'seats', seatId);
-        const result = await runTransaction(this.firestore, async (transaction) => {
-          const seatDoc = await transaction.get(seatRef);
-          if (!seatDoc.exists()) {
-            throw new Error('Seat does not exist');
+        const seatDbRef = dbRef(this.rtdb, `theater_events/${EVENT_ID}/seats/${seatId}`);
+        const result = await rtdbRunTransaction(seatDbRef, (currentData) => {
+          if (!currentData) return currentData;
+
+          const isLockExpired = currentData.status === 'locked' && currentData.lockedUntil && currentData.lockedUntil < now;
+          const isOwnedByMe = currentData.status === 'locked' && currentData.lockedBy?.organizerId === organizer.id;
+
+          if (currentData.status !== 'available' && !isLockExpired && !isOwnedByMe) {
+            return; // Abort transaction
           }
+
+          return {
+            ...currentData,
+            status: 'locked',
+            lockedBy: {
+              organizerId: organizer.id,
+              name: organizer.name,
+              color: organizer.color,
+              badge: organizer.badge
+            },
+            lockedUntil,
+            updatedAt: now
+          };
+        });
+
+        if (!result.committed) {
+          const freshSeat = this.seats[seatId];
+          const holderName = freshSeat?.lockedBy?.name || 'another organizer';
+          return {
+            success: false,
+            error: `Seat ${freshSeat?.seatCode || seatId} is already held by ${holderName}!`
+          };
+        }
+
+        this.addLog({
+          id: 'log_' + Date.now(),
+          time: now,
+          type: 'lock',
+          text: `${organizer.name} locked Seat ${result.snapshot.val().seatCode} (60s hold)`
+        });
+
+        return { success: true, seat: result.snapshot.val() };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    // B. Firebase Firestore Atomic Transaction
+    if (this.mode === 'firestore' && this.firestore) {
+      try {
+        const seatRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seatId);
+        const result = await firestoreRunTransaction(this.firestore, async (transaction) => {
+          const seatDoc = await transaction.get(seatRef);
+          if (!seatDoc.exists()) throw new Error('Seat does not exist');
           const data = seatDoc.data();
 
-          // Check if seat is available or lock has expired
           const isLockExpired = data.status === 'locked' && data.lockedUntil && data.lockedUntil < now;
-          const isOwnedByMe = data.status === 'locked' && data.lockedBy && data.lockedBy.organizerId === organizer.id;
+          const isOwnedByMe = data.status === 'locked' && data.lockedBy?.organizerId === organizer.id;
 
           if (data.status !== 'available' && !isLockExpired && !isOwnedByMe) {
             throw new Error(`Seat is currently ${data.status} ${data.lockedBy ? 'by ' + data.lockedBy.name : ''}`);
@@ -299,12 +430,12 @@ class SyncEngine {
       }
     }
 
-    // Mesh / Atomic Local Concurrency Simulation
+    // C. Local Mesh Atomic Transaction
     const seat = this.seats[seatId];
     if (!seat) return { success: false, error: 'Seat not found' };
 
     const isLockExpired = seat.status === 'locked' && seat.lockedUntil && seat.lockedUntil < now;
-    const isOwnedByMe = seat.status === 'locked' && seat.lockedBy && seat.lockedBy.organizerId === organizer.id;
+    const isOwnedByMe = seat.status === 'locked' && seat.lockedBy?.organizerId === organizer.id;
 
     if (seat.status !== 'available' && !isLockExpired && !isOwnedByMe) {
       const lockerName = seat.lockedBy ? seat.lockedBy.name : 'another organizer';
@@ -333,23 +464,43 @@ class SyncEngine {
       text: `${organizer.name} locked Seat ${seat.seatCode} (60s hold)`
     };
     this.addLog(logItem);
-
     this.broadcastSeatUpdate(seat, logItem);
     this.notifyListeners();
 
     return { success: true, seat };
   }
 
-  // Concurrency Principle 2: Release Lock
+  // 2. Release Lock
   async releaseSeatLock(seatId, organizerId) {
     const now = Date.now();
     const seat = this.seats[seatId];
     if (!seat) return;
 
-    if (this.mode === 'firebase' && this.firestore) {
+    if (this.mode === 'rtdb' && this.rtdb) {
       try {
-        const seatRef = doc(this.firestore, 'theater_events', 'evt_grand_theater_2026', 'seats', seatId);
-        await runTransaction(this.firestore, async (transaction) => {
+        const seatDbRef = dbRef(this.rtdb, `theater_events/${EVENT_ID}/seats/${seatId}`);
+        await rtdbRunTransaction(seatDbRef, (current) => {
+          if (current && current.status === 'locked' && current.lockedBy?.organizerId === organizerId) {
+            return {
+              ...current,
+              status: 'available',
+              lockedBy: null,
+              lockedUntil: null,
+              updatedAt: now
+            };
+          }
+          return current;
+        });
+      } catch (e) {
+        console.error('RTDB release error:', e);
+      }
+      return;
+    }
+
+    if (this.mode === 'firestore' && this.firestore) {
+      try {
+        const seatRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seatId);
+        await firestoreRunTransaction(this.firestore, async (transaction) => {
           const seatDoc = await transaction.get(seatRef);
           if (!seatDoc.exists()) return;
           const data = seatDoc.data();
@@ -363,12 +514,12 @@ class SyncEngine {
           }
         });
       } catch (e) {
-        console.error('Error releasing lock:', e);
+        console.error('Firestore release error:', e);
       }
       return;
     }
 
-    if (seat.status === 'locked' && seat.lockedBy && seat.lockedBy.organizerId === organizerId) {
+    if (seat.status === 'locked' && seat.lockedBy?.organizerId === organizerId) {
       seat.status = 'available';
       seat.lockedBy = null;
       seat.lockedUntil = null;
@@ -379,21 +530,63 @@ class SyncEngine {
     }
   }
 
-  // Concurrency Principle 3: Atomic Reservation Commit
+  // 3. Atomic Reservation Commit
   async reserveSeat(seatId, attendeeData, organizer, autoCheckIn = false) {
     const now = Date.now();
     const finalStatus = autoCheckIn ? 'checked_in' : 'reserved';
 
-    // Attendee schema has only name and ticketId
     const sanitizedAttendee = {
       name: attendeeData.name.trim(),
       ticketId: attendeeData.ticketId.trim()
     };
 
-    if (this.mode === 'firebase' && this.firestore) {
+    // A. RTDB Atomic Commit
+    if (this.mode === 'rtdb' && this.rtdb) {
       try {
-        const seatRef = doc(this.firestore, 'theater_events', 'evt_grand_theater_2026', 'seats', seatId);
-        const result = await runTransaction(this.firestore, async (transaction) => {
+        const seatDbRef = dbRef(this.rtdb, `theater_events/${EVENT_ID}/seats/${seatId}`);
+        const result = await rtdbRunTransaction(seatDbRef, (current) => {
+          if (!current) return current;
+
+          const isOwnedByMe = current.status === 'locked' && current.lockedBy?.organizerId === organizer.id;
+          const isAvailable = current.status === 'available';
+
+          if (!isOwnedByMe && !isAvailable) {
+            return; // Abort
+          }
+
+          return {
+            ...current,
+            status: finalStatus,
+            assignedTo: sanitizedAttendee,
+            lockedBy: null,
+            lockedUntil: null,
+            checkedInAt: autoCheckIn ? now : null,
+            updatedAt: now
+          };
+        });
+
+        if (!result.committed) {
+          return { success: false, error: 'Double-booking prevented! Seat is no longer available.' };
+        }
+
+        this.addLog({
+          id: 'log_' + Date.now(),
+          time: now,
+          type: 'booking',
+          text: `${organizer.name} assigned Seat ${result.snapshot.val().seatCode} to ${sanitizedAttendee.name} (${sanitizedAttendee.ticketId})`
+        });
+
+        return { success: true, seat: result.snapshot.val() };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    // B. Firestore Atomic Commit
+    if (this.mode === 'firestore' && this.firestore) {
+      try {
+        const seatRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seatId);
+        const result = await firestoreRunTransaction(this.firestore, async (transaction) => {
           const seatDoc = await transaction.get(seatRef);
           if (!seatDoc.exists()) throw new Error('Seat does not exist');
           const data = seatDoc.data();
@@ -432,7 +625,7 @@ class SyncEngine {
       }
     }
 
-    // Local / Mesh Transaction
+    // C. Local Mesh Atomic Commit
     const seat = this.seats[seatId];
     if (!seat) return { success: false, error: 'Seat not found' };
 
@@ -462,25 +655,36 @@ class SyncEngine {
       text: `${organizer.name} assigned Seat ${seat.seatCode} to ${sanitizedAttendee.name} (${sanitizedAttendee.ticketId})`
     };
     this.addLog(logItem);
-
     this.broadcastSeatUpdate(seat, logItem);
     this.notifyListeners();
 
     return { success: true, seat };
   }
 
-  // Front-of-house Check-in
+  // 4. Front-of-house Check-in
   async checkInSeat(seatId, organizer) {
     const now = Date.now();
     const seat = this.seats[seatId];
     if (!seat || seat.status !== 'reserved') return { success: false, error: 'Seat cannot be checked in' };
 
-    if (this.mode === 'firebase' && this.firestore) {
+    if (this.mode === 'rtdb' && this.rtdb) {
       try {
-        const seatRef = doc(this.firestore, 'theater_events', 'evt_grand_theater_2026', 'seats', seatId);
-        await runTransaction(this.firestore, async (transaction) => {
-          const seatDoc = await transaction.get(seatRef);
-          if (!seatDoc.exists()) throw new Error('Seat not found');
+        const seatDbRef = dbRef(this.rtdb, `theater_events/${EVENT_ID}/seats/${seatId}`);
+        await dbUpdate(seatDbRef, {
+          status: 'checked_in',
+          checkedInAt: now,
+          updatedAt: now
+        });
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    if (this.mode === 'firestore' && this.firestore) {
+      try {
+        const seatRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seatId);
+        await firestoreRunTransaction(this.firestore, async (transaction) => {
           transaction.update(seatRef, {
             status: 'checked_in',
             checkedInAt: now,
@@ -511,16 +715,30 @@ class SyncEngine {
     return { success: true, seat };
   }
 
-  // Undo check-in
+  // 5. Undo Check-In
   async undoCheckIn(seatId, organizer) {
     const now = Date.now();
     const seat = this.seats[seatId];
     if (!seat || seat.status !== 'checked_in') return { success: false };
 
-    if (this.mode === 'firebase' && this.firestore) {
+    if (this.mode === 'rtdb' && this.rtdb) {
       try {
-        const seatRef = doc(this.firestore, 'theater_events', 'evt_grand_theater_2026', 'seats', seatId);
-        await runTransaction(this.firestore, async (transaction) => {
+        const seatDbRef = dbRef(this.rtdb, `theater_events/${EVENT_ID}/seats/${seatId}`);
+        await dbUpdate(seatDbRef, {
+          status: 'reserved',
+          checkedInAt: null,
+          updatedAt: now
+        });
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    if (this.mode === 'firestore' && this.firestore) {
+      try {
+        const seatRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seatId);
+        await firestoreRunTransaction(this.firestore, async (transaction) => {
           transaction.update(seatRef, {
             status: 'reserved',
             checkedInAt: null,
@@ -551,17 +769,34 @@ class SyncEngine {
     return { success: true, seat };
   }
 
-  // Cancel reservation & release seat to available
+  // 6. Cancel Reservation & Release Seat
   async cancelReservation(seatId, organizer) {
     const now = Date.now();
     const seat = this.seats[seatId];
     if (!seat) return { success: false };
     const prevGuest = seat.assignedTo?.name || 'Guest';
 
-    if (this.mode === 'firebase' && this.firestore) {
+    if (this.mode === 'rtdb' && this.rtdb) {
       try {
-        const seatRef = doc(this.firestore, 'theater_events', 'evt_grand_theater_2026', 'seats', seatId);
-        await runTransaction(this.firestore, async (transaction) => {
+        const seatDbRef = dbRef(this.rtdb, `theater_events/${EVENT_ID}/seats/${seatId}`);
+        await dbUpdate(seatDbRef, {
+          status: 'available',
+          assignedTo: null,
+          lockedBy: null,
+          lockedUntil: null,
+          checkedInAt: null,
+          updatedAt: now
+        });
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    if (this.mode === 'firestore' && this.firestore) {
+      try {
+        const seatRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seatId);
+        await firestoreRunTransaction(this.firestore, async (transaction) => {
           transaction.update(seatRef, {
             status: 'available',
             assignedTo: null,
@@ -598,12 +833,14 @@ class SyncEngine {
     return { success: true, seat };
   }
 
-  // Reset entire venue back to default layout
+  // 7. Reset Venue
   async resetAllSeats() {
     this.seats = generateInitialSeats();
     this.saveLocalSeats();
     
-    if (this.mode === 'firebase' && this.firestore) {
+    if (this.mode === 'rtdb' && this.rtdb) {
+      await this.seedRTDB();
+    } else if (this.mode === 'firestore' && this.firestore) {
       await this.seedFirestore();
     }
 
@@ -611,7 +848,7 @@ class SyncEngine {
       id: 'log_' + Date.now(),
       time: Date.now(),
       type: 'system',
-      text: 'Venue reset: All seats re-initialized to initial layout'
+      text: 'Venue reset: All seats re-initialized to available'
     };
     this.addLog(logItem);
     this.broadcastState();

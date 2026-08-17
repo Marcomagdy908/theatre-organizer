@@ -1,5 +1,6 @@
 // Interactive Visual Theater Grid Component
 // Renders Exact Theater Layout: Rows A-Q with Left Wing (Odds), Center Section, and Right Wing (Evens)
+// Supports Responsive Mobile Views & Wing Focused Navigation
 import { THEATER_ROW_DEFINITIONS } from '../utils/constants.js';
 
 export class SeatMap {
@@ -7,6 +8,7 @@ export class SeatMap {
     this.container = document.getElementById(containerId);
     this.seats = {};
     this.activeSection = 'all'; // 'all' | 'part1' | 'part2'
+    this.activeWing = 'all'; // 'all' | 'left' | 'center' | 'right'
     this.statusFilter = 'all'; // 'all' | 'available' | 'locked' | 'reserved' | 'checked_in'
     this.highlightedSeatId = null;
     this.currentOrganizer = options.currentOrganizer || null;
@@ -64,6 +66,11 @@ export class SeatMap {
     this.render();
   }
 
+  setWing(wing) {
+    this.activeWing = wing;
+    this.render();
+  }
+
   setStatusFilter(filter) {
     this.statusFilter = filter;
     this.render();
@@ -78,11 +85,14 @@ export class SeatMap {
       if (this.activeSection !== 'all' && this.activeSection !== targetSec) {
         this.activeSection = targetSec;
       }
+      if (this.activeWing !== 'all' && this.activeWing !== seat.wing) {
+        this.activeWing = 'all';
+      }
       this.render();
       setTimeout(() => {
         const el = document.getElementById(`seat-btn-${seatId}`);
         if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
           el.classList.add('radar-pulse');
           setTimeout(() => el.classList.remove('radar-pulse'), 5000);
         }
@@ -106,8 +116,27 @@ export class SeatMap {
         </div>
       </div>
 
-      <!-- Column Labels Guide -->
-      <div class="theater-column-guide">
+      <!-- Mobile & Responsive Wing Focus Selector -->
+      <div class="wing-focus-nav">
+        <span class="wing-nav-label">Column View:</span>
+        <div class="wing-pills-group">
+          <button type="button" class="wing-pill ${this.activeWing === 'all' ? 'active' : ''}" data-wing="all">
+            All Columns
+          </button>
+          <button type="button" class="wing-pill ${this.activeWing === 'left' ? 'active' : ''}" data-wing="left">
+            Left (Odds 11–31)
+          </button>
+          <button type="button" class="wing-pill ${this.activeWing === 'center' ? 'active' : ''}" data-wing="center">
+            Center (1–10)
+          </button>
+          <button type="button" class="wing-pill ${this.activeWing === 'right' ? 'active' : ''}" data-wing="right">
+            Right (Evens 10–30)
+          </button>
+        </div>
+      </div>
+
+      <!-- Column Labels Guide (Desktop) -->
+      <div class="theater-column-guide desktop-only">
         <div class="guide-col guide-left">
           <span class="guide-title">LEFT WING</span>
           <span class="guide-sub">Odd Numbers (11 - 31)</span>
@@ -129,6 +158,16 @@ export class SeatMap {
     `;
 
     this.bindSeatEvents();
+    this.bindWingNavEvents();
+  }
+
+  bindWingNavEvents() {
+    const pills = this.container.querySelectorAll('.wing-pill');
+    pills.forEach(pill => {
+      pill.addEventListener('click', () => {
+        this.setWing(pill.dataset.wing);
+      });
+    });
   }
 
   getRowsToRender() {
@@ -152,7 +191,7 @@ export class SeatMap {
             <span class="section-indicator ${isFront ? 'vip-gold' : ''}"></span>
             <h3 class="section-title">${partTitle}</h3>
           </div>
-          <span class="section-badge">${isFront ? '👑 Front Rows (Premium)' : 'Standard & Economy'}</span>
+          <span class="section-badge">${isFront ? 'Front Rows' : 'Rear Rows'}</span>
         </div>
 
         <div class="section-grid">
@@ -165,9 +204,12 @@ export class SeatMap {
   renderTheaterRow(rowDef) {
     const { row, left, center, right } = rowDef;
 
-    // Separate center into odd and even sides if present
     const centerOdds = center.filter(n => n % 2 !== 0);
     const centerEvens = center.filter(n => n % 2 === 0);
+
+    const showLeft = this.activeWing === 'all' || this.activeWing === 'left';
+    const showCenter = this.activeWing === 'all' || this.activeWing === 'center';
+    const showRight = this.activeWing === 'all' || this.activeWing === 'right';
 
     return `
       <div class="seat-row-3col" data-row="${row}">
@@ -175,40 +217,50 @@ export class SeatMap {
         <span class="row-label row-label-left">${row}</span>
 
         <!-- 1. Left Wing (Odd Numbers decreasing) -->
-        <div class="wing-group wing-left">
-          ${left.map(num => this.renderSeatNodeByCode(row, num)).join('')}
-        </div>
+        ${showLeft ? `
+          <div class="wing-group wing-left">
+            ${left.map(num => this.renderSeatNodeByCode(row, num)).join('')}
+          </div>
+        ` : ''}
 
-        <!-- Left Aisle -->
-        <div class="row-aisle">
-          <span class="aisle-marker">|</span>
-        </div>
+        <!-- Left Aisle (if showing multiple columns) -->
+        ${showLeft && showCenter ? `
+          <div class="row-aisle">
+            <span class="aisle-marker">|</span>
+          </div>
+        ` : ''}
 
         <!-- 2. Center Section (or Gap if empty) -->
-        <div class="wing-group wing-center ${center.length === 0 ? 'wing-center-empty' : ''}">
-          ${center.length > 0 ? `
-            <div class="center-subgroup center-odds">
-              ${centerOdds.map(num => this.renderSeatNodeByCode(row, num)).join('')}
-            </div>
-            <div class="center-subgroup center-evens">
-              ${centerEvens.map(num => this.renderSeatNodeByCode(row, num)).join('')}
-            </div>
-          ` : `
-            <div class="center-open-walkway">
-              <span>— Central Walkway (${row}) —</span>
-            </div>
-          `}
-        </div>
+        ${showCenter ? `
+          <div class="wing-group wing-center ${center.length === 0 ? 'wing-center-empty' : ''}">
+            ${center.length > 0 ? `
+              <div class="center-subgroup center-odds">
+                ${centerOdds.map(num => this.renderSeatNodeByCode(row, num)).join('')}
+              </div>
+              <div class="center-subgroup center-evens">
+                ${centerEvens.map(num => this.renderSeatNodeByCode(row, num)).join('')}
+              </div>
+            ` : `
+              <div class="center-open-walkway">
+                <span>— Walkway (${row}) —</span>
+              </div>
+            `}
+          </div>
+        ` : ''}
 
-        <!-- Right Aisle -->
-        <div class="row-aisle">
-          <span class="aisle-marker">|</span>
-        </div>
+        <!-- Right Aisle (if showing multiple columns) -->
+        ${showCenter && showRight ? `
+          <div class="row-aisle">
+            <span class="aisle-marker">|</span>
+          </div>
+        ` : ''}
 
         <!-- 3. Right Wing (Even Numbers increasing) -->
-        <div class="wing-group wing-right">
-          ${right.map(num => this.renderSeatNodeByCode(row, num)).join('')}
-        </div>
+        ${showRight ? `
+          <div class="wing-group wing-right">
+            ${right.map(num => this.renderSeatNodeByCode(row, num)).join('')}
+          </div>
+        ` : ''}
 
         <!-- Right Row Letter -->
         <span class="row-label row-label-right">${row}</span>
@@ -266,7 +318,6 @@ export class SeatMap {
         </span>
         ${lockCountdown}
         ${seat.isAccessible ? '<span class="seat-acc-icon">♿</span>' : ''}
-        ${seat.tier?.includes('VIP') ? '<span class="seat-vip-crown">👑</span>' : ''}
       </button>
     `;
   }
@@ -320,21 +371,21 @@ export class SeatMap {
       `;
     }
 
-      const wingLabel = seat.wing === 'left' ? 'Left Wing (Odds)' : seat.wing === 'center' ? 'Center Section' : 'Right Wing (Evens)';
-      this.tooltipEl.innerHTML = `
-        <div class="tt-header">
-          <div class="tt-seat-code">Seat ${seat.seatCode}</div>
-          <span class="tt-status-pill ${statusClass}">${statusLabel}</span>
-        </div>
-        <div class="tt-body">
-          <div class="tt-row"><span class="tt-k">Section:</span> <span class="tt-v">${seat.section || 'Auditorium'}</span></div>
-          <div class="tt-row"><span class="tt-k">Position:</span> <span class="tt-v">${wingLabel}</span></div>
-          ${extraDetail}
-        </div>
-        <div class="tt-footer">
-          ${seat.status === 'available' ? 'Click to Acquire Hold & Assign' : 'Click to View / Manage'}
-        </div>
-      `;
+    const wingLabel = seat.wing === 'left' ? 'Left Wing (Odds)' : seat.wing === 'center' ? 'Center Section' : 'Right Wing (Evens)';
+    this.tooltipEl.innerHTML = `
+      <div class="tt-header">
+        <div class="tt-seat-code">Seat ${seat.seatCode}</div>
+        <span class="tt-status-pill ${statusClass}">${statusLabel}</span>
+      </div>
+      <div class="tt-body">
+        <div class="tt-row"><span class="tt-k">Section:</span> <span class="tt-v">${seat.section || 'Auditorium'}</span></div>
+        <div class="tt-row"><span class="tt-k">Position:</span> <span class="tt-v">${wingLabel}</span></div>
+        ${extraDetail}
+      </div>
+      <div class="tt-footer">
+        ${seat.status === 'available' ? 'Tap to Lock & Assign' : 'Tap to View / Manage'}
+      </div>
+    `;
 
     this.tooltipEl.classList.add('visible');
     this.positionTooltip(event.clientX, event.clientY);
