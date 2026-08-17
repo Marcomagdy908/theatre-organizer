@@ -65,10 +65,12 @@ class SyncEngine {
         const envConfig = {
           apiKey: envApiKey.trim(),
           authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || `${envProjectId.trim()}.firebaseapp.com`,
+          databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL?.trim() || undefined,
           projectId: envProjectId.trim(),
-          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || `${envProjectId.trim()}.appspot.com`,
+          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || `${envProjectId.trim()}.firebasestorage.app`,
           messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || '',
-          appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() || ''
+          appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() || '',
+          measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID?.trim() || undefined
         };
         this.initFirebase(envConfig);
         return;
