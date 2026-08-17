@@ -7,6 +7,7 @@ import { Toolbar } from './components/Toolbar.js';
 import { SeatMap } from './components/SeatMap.js';
 import { AssignmentModal } from './components/AssignmentModal.js';
 import { SeatDetailsModal } from './components/SeatDetailsModal.js';
+import { SelectionDock } from './components/SelectionDock.js';
 import { FirebaseModal } from './components/FirebaseModal.js';
 import { ActivityFeed } from './components/ActivityFeed.js';
 import { toast } from './components/Toast.js';
@@ -20,6 +21,7 @@ class App {
     this.organizerBar = null;
     this.assignmentModal = null;
     this.seatDetailsModal = null;
+    this.selectionDock = null;
     this.firebaseModal = null;
     this.activityFeed = null;
 
@@ -29,14 +31,36 @@ class App {
   init() {
     try {
       // 1. Initialize Modals
-      this.assignmentModal = new AssignmentModal('assignment-modal-mount');
+      this.assignmentModal = new AssignmentModal('assignment-modal-mount', () => {
+        if (this.seatMap) this.seatMap.clearSelection();
+        if (this.selectionDock) this.selectionDock.clear();
+      });
       this.seatDetailsModal = new SeatDetailsModal('details-modal-mount');
       this.firebaseModal = new FirebaseModal('firebase-modal-mount', (mode) => {
         if (this.organizerBar) this.organizerBar.updateSyncStatus(mode);
       });
       this.activityFeed = new ActivityFeed('activity-feed-mount');
 
-      // 2. Initialize Organizer Bar
+      // 2. Initialize Selection Dock
+      this.selectionDock = new SelectionDock('selection-dock-mount', {
+        onReserveClick: (selectedSeats) => {
+          if (this.assignmentModal && selectedSeats.length > 0) {
+            this.assignmentModal.open(selectedSeats, this.currentOrganizer);
+          }
+        },
+        onClearClick: async () => {
+          const selected = this.seatMap ? this.seatMap.getSelectedSeats() : [];
+          if (selected.length > 0) {
+            const ids = selected.map(s => s.id);
+            await syncEngine.releaseMultipleLocks(ids, this.currentOrganizer.id);
+            if (this.seatMap) this.seatMap.clearSelection();
+            if (this.selectionDock) this.selectionDock.clear();
+            toast.info('Holds Released', 'Selected seats released.');
+          }
+        }
+      });
+
+      // 3. Initialize Organizer Bar
       this.organizerBar = new OrganizerBar('organizer-bar-mount', {
         initialOrganizer: this.currentOrganizer,
         onOrganizerChange: (newOrg) => {
@@ -51,10 +75,10 @@ class App {
         }
       });
 
-      // 3. Initialize Stats Dashboard
+      // 4. Initialize Stats Dashboard
       this.statsDashboard = new StatsDashboard('stats-dashboard-mount');
 
-      // 4. Initialize Toolbar
+      // 5. Initialize Toolbar
       this.toolbar = new Toolbar('toolbar-mount', {
         onSearch: (query) => this.handleSearch(query),
         onSectionChange: (section) => {
@@ -65,13 +89,16 @@ class App {
         }
       });
 
-      // 5. Initialize Interactive Seat Map
+      // 6. Initialize Interactive Seat Map
       this.seatMap = new SeatMap('seat-map-mount', {
         currentOrganizer: this.currentOrganizer,
-        onSeatClick: (seat) => this.handleSeatClick(seat)
+        onSeatClick: (seat) => this.handleSeatClick(seat),
+        onSelectionChange: (selectedSeats) => {
+          if (this.selectionDock) this.selectionDock.updateSelection(selectedSeats);
+        }
       });
 
-      // 6. Connect Real-Time Sync Engine Listeners
+      // 7. Connect Real-Time Sync Engine Listeners
       syncEngine.subscribe((seats, logs, mode) => {
         if (this.seatMap) this.seatMap.updateData(seats, this.currentOrganizer);
         if (this.toolbar) this.toolbar.updateCounts(seats);
@@ -93,7 +120,7 @@ class App {
 
       toast.success(
         `Welcome, ${this.currentOrganizer.name}`, 
-        `Logged into ${this.currentOrganizer.role}. Real-time synchronization active.`
+        `Logged in. Multi-seat selection and real-time sync active.`
       );
     } catch (err) {
       console.error('App initialization error:', err);
@@ -105,19 +132,19 @@ class App {
     const freshSeat = freshSeats[seat.id] || seat;
 
     if (freshSeat.status === 'available') {
-      // Step 1: Acquire Atomic Lock with 60-sec TTL
+      // Acquire 60s lock & add to multi-selection
       const lockRes = await syncEngine.acquireSeatLock(freshSeat.id, this.currentOrganizer);
-
       if (lockRes.success) {
-        if (this.assignmentModal) this.assignmentModal.open(lockRes.seat, this.currentOrganizer);
+        if (this.seatMap) this.seatMap.toggleSeatSelection(lockRes.seat);
       } else {
-        // Concurrency collision rejection!
         toast.conflict(lockRes.error);
       }
     } else if (freshSeat.status === 'locked') {
       const isOwnedByMe = freshSeat.lockedBy?.organizerId === this.currentOrganizer.id;
       if (isOwnedByMe) {
-        if (this.assignmentModal) this.assignmentModal.open(freshSeat, this.currentOrganizer);
+        // Toggle off & release lock
+        await syncEngine.releaseSeatLock(freshSeat.id, this.currentOrganizer.id);
+        if (this.seatMap) this.seatMap.toggleSeatSelection(freshSeat);
       } else {
         const holderName = freshSeat.lockedBy ? freshSeat.lockedBy.name : 'another organizer';
         const remainingSecs = Math.max(0, Math.ceil(((freshSeat.lockedUntil || Date.now()) - Date.now()) / 1000));
@@ -141,13 +168,11 @@ class App {
     const q = query.toLowerCase();
     const seats = syncEngine.getSeats();
     
-    // Check exact seat code matches first (e.g. "B7", "b7", "A19")
     let matchedSeat = Object.values(seats).find(s => 
       s.seatCode.toLowerCase() === q || 
       s.seatCode.toLowerCase().replace(/[^a-z0-9]/g, '') === q.replace(/[^a-z0-9]/g, '')
     );
 
-    // If not, check ticket ID or guest name
     if (!matchedSeat) {
       matchedSeat = Object.values(seats).find(s => {
         if (!s.assignedTo) return false;
@@ -163,9 +188,4 @@ class App {
   }
 }
 
-// Immediate execution or DOM ready handling
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => new App());
-} else {
-  new App();
-}
+new App();

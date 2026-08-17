@@ -1,6 +1,5 @@
 // Interactive Visual Theater Grid Component
-// Renders Exact Theater Layout: Rows A-Q with Left Wing (Odds), Center Section, and Right Wing (Evens)
-// Supports Mobile Touch Scaling, Zoom Controls & Column Wing Focused Views
+// Supports Multi-Seat Selection, Mobile Touch Scaling, Zoom Controls & Column Wing Focused Views
 import { THEATER_ROW_DEFINITIONS } from '../utils/constants.js';
 
 export class SeatMap {
@@ -9,11 +8,13 @@ export class SeatMap {
     this.seats = {};
     this.activeSection = 'all'; // 'all' | 'part1' | 'part2'
     this.activeWing = 'all'; // 'all' | 'left' | 'center' | 'right'
-    this.zoomLevel = 1.0; // 0.75, 1.0, 1.25
-    this.statusFilter = 'all'; // 'all' | 'available' | 'locked' | 'reserved' | 'checked_in'
+    this.zoomLevel = 1.0; // 0.8, 1.0, 1.25
+    this.statusFilter = 'all';
     this.highlightedSeatId = null;
+    this.selectedSeatIds = new Set(); // Multi-seat selection tracker
     this.currentOrganizer = options.currentOrganizer || null;
     this.onSeatClick = options.onSeatClick || (() => {});
+    this.onSelectionChange = options.onSelectionChange || (() => {});
     
     this.tooltipEl = null;
     this.createTooltip();
@@ -59,6 +60,16 @@ export class SeatMap {
   updateData(seats, currentOrganizer) {
     this.seats = seats;
     this.currentOrganizer = currentOrganizer;
+
+    // Prune any selected seats that are no longer available/held by me
+    const now = Date.now();
+    for (const seatId of this.selectedSeatIds) {
+      const s = seats[seatId];
+      if (!s || (s.status !== 'available' && !(s.status === 'locked' && s.lockedBy?.organizerId === this.currentOrganizer?.id && s.lockedUntil > now))) {
+        this.selectedSeatIds.delete(seatId);
+      }
+    }
+
     this.render();
   }
 
@@ -87,6 +98,26 @@ export class SeatMap {
   setStatusFilter(filter) {
     this.statusFilter = filter;
     this.render();
+  }
+
+  getSelectedSeats() {
+    return Array.from(this.selectedSeatIds).map(id => this.seats[id]).filter(Boolean);
+  }
+
+  clearSelection() {
+    this.selectedSeatIds.clear();
+    this.render();
+    this.onSelectionChange([]);
+  }
+
+  toggleSeatSelection(seat) {
+    if (this.selectedSeatIds.has(seat.id)) {
+      this.selectedSeatIds.delete(seat.id);
+    } else {
+      this.selectedSeatIds.add(seat.id);
+    }
+    this.render();
+    this.onSelectionChange(this.getSelectedSeats());
   }
 
   highlightSeat(seatId) {
@@ -129,9 +160,8 @@ export class SeatMap {
         </div>
       </div>
 
-      <!-- Mobile & Responsive Controls Bar -->
+      <!-- Controls Bar (Wing Nav + Zoom) -->
       <div class="grid-controls-bar">
-        <!-- Wing Focus Navigation (Especially handy on Mobile) -->
         <div class="wing-focus-nav">
           <div class="wing-pills-group">
             <button type="button" class="wing-pill ${this.activeWing === 'all' ? 'active' : ''}" data-wing="all">
@@ -149,7 +179,6 @@ export class SeatMap {
           </div>
         </div>
 
-        <!-- Mobile Touch Scale Zoom Controller -->
         <div class="zoom-controls-group">
           <button type="button" class="zoom-btn ${this.zoomLevel === 0.8 ? 'active' : ''}" data-zoom="0.8" title="Fit Overview">
             Fit
@@ -179,7 +208,7 @@ export class SeatMap {
         </div>
       </div>
 
-      <!-- Scrollable Grid Container with Dynamic Zoom -->
+      <!-- Scrollable Grid Container with Drag-to-Scroll -->
       <div class="theater-seating-scroll-wrapper" style="--grid-zoom: ${this.zoomLevel};">
         <div class="theater-seating-layout ${this.activeWing !== 'all' ? 'is-focused-wing' : ''}">
           ${this.renderPart('Part 1: Front Section (Rows A – H)', rowsToRender.filter(r => ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].includes(r.row)))}
@@ -193,7 +222,6 @@ export class SeatMap {
   }
 
   bindControlsEvents() {
-    // Wing tabs
     const pills = this.container.querySelectorAll('.wing-pill');
     pills.forEach(pill => {
       pill.addEventListener('click', () => {
@@ -201,7 +229,6 @@ export class SeatMap {
       });
     });
 
-    // Zoom buttons
     const zoomBtns = this.container.querySelectorAll('.zoom-btn');
     zoomBtns.forEach(btn => {
       btn.addEventListener('click', () => {
@@ -209,7 +236,6 @@ export class SeatMap {
       });
     });
 
-    // Enable drag-to-scroll along X axis
     const scrollWrapper = this.container.querySelector('.theater-seating-scroll-wrapper');
     if (scrollWrapper) {
       let isDown = false;
@@ -287,10 +313,9 @@ export class SeatMap {
 
     return `
       <div class="seat-row-3col" data-row="${row}">
-        <!-- Left Row Letter -->
         <span class="row-label row-label-left">${row}</span>
 
-        <!-- 1. Left Wing (Odd Numbers decreasing) -->
+        <!-- 1. Left Wing -->
         ${showLeft ? `
           <div class="wing-group wing-left">
             ${left.map(num => this.renderSeatNodeByCode(row, num)).join('')}
@@ -329,14 +354,13 @@ export class SeatMap {
           </div>
         ` : ''}
 
-        <!-- 3. Right Wing (Even Numbers increasing) -->
+        <!-- 3. Right Wing -->
         ${showRight ? `
           <div class="wing-group wing-right">
             ${right.map(num => this.renderSeatNodeByCode(row, num)).join('')}
           </div>
         ` : ''}
 
-        <!-- Right Row Letter -->
         <span class="row-label row-label-right">${row}</span>
       </div>
     `;
@@ -355,25 +379,27 @@ export class SeatMap {
 
     const isFilteredOut = this.statusFilter !== 'all' && seat.status !== this.statusFilter;
     const isHighlighted = this.highlightedSeatId === seat.id;
+    const isSelected = this.selectedSeatIds.has(seat.id);
     const isHeldByMe = seat.status === 'locked' && seat.lockedBy?.organizerId === this.currentOrganizer?.id;
     const isHeldByOther = seat.status === 'locked' && !isHeldByMe;
 
     let statusClass = `status-${seat.status}`;
     if (isHeldByMe) statusClass += ' held-by-me';
     if (isHeldByOther) statusClass += ' held-by-other';
+    if (isSelected) statusClass += ' is-selected';
     if (isFilteredOut) statusClass += ' is-dimmed';
     if (isHighlighted) statusClass += ' is-highlighted';
 
     let innerBadge = `<span class="seat-num">${num}</span>`;
     let lockCountdown = '';
 
-    if (seat.status === 'locked') {
+    if (isSelected) {
+      innerBadge = `<span class="seat-select-icon">✓</span>`;
+    } else if (seat.status === 'locked') {
       const remainingSecs = Math.max(0, Math.ceil(((seat.lockedUntil || Date.now()) - Date.now()) / 1000));
       lockCountdown = `<span class="seat-lock-badge">${remainingSecs}s</span>`;
       innerBadge = `<span class="seat-lock-icon">⏳</span>`;
-    } else if (seat.status === 'checked_in') {
-      innerBadge = `<span class="seat-check-icon">✓</span>`;
-    } else if (seat.status === 'reserved') {
+    } else if (seat.status === 'reserved' || seat.status === 'checked_in') {
       const initials = (seat.assignedTo?.name || 'R').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
       innerBadge = `<span class="seat-initials">${initials}</span>`;
     }
@@ -416,11 +442,12 @@ export class SeatMap {
   showTooltip(seat, event) {
     if (!this.tooltipEl) return;
 
-    let statusLabel = 'Available';
-    let statusClass = 'tt-avail';
+    const isSelected = this.selectedSeatIds.has(seat.id);
+    let statusLabel = isSelected ? 'Selected (Hold Active)' : 'Available';
+    let statusClass = isSelected ? 'tt-locked' : 'tt-avail';
     let extraDetail = '';
 
-    if (seat.status === 'locked') {
+    if (seat.status === 'locked' && !isSelected) {
       const secs = Math.max(0, Math.ceil(((seat.lockedUntil || Date.now()) - Date.now()) / 1000));
       const holder = seat.lockedBy ? seat.lockedBy.name : 'Another organizer';
       statusLabel = `Hold (${secs}s left)`;
@@ -428,20 +455,12 @@ export class SeatMap {
       extraDetail = `
         <div class="tt-row"><span class="tt-k">Held By:</span> <span class="tt-v text-amber">${holder}</span></div>
       `;
-    } else if (seat.status === 'reserved') {
+    } else if (seat.status === 'reserved' || seat.status === 'checked_in') {
       statusLabel = 'Reserved';
       statusClass = 'tt-res';
       extraDetail = `
         <div class="tt-row"><span class="tt-k">Guest:</span> <span class="tt-v highlight">${seat.assignedTo?.name || 'N/A'}</span></div>
         <div class="tt-row"><span class="tt-k">Ticket:</span> <span class="tt-v font-mono">${seat.assignedTo?.ticketId || 'N/A'}</span></div>
-      `;
-    } else if (seat.status === 'checked_in') {
-      statusLabel = 'Checked In';
-      statusClass = 'tt-check';
-      extraDetail = `
-        <div class="tt-row"><span class="tt-k">Guest:</span> <span class="tt-v highlight">${seat.assignedTo?.name || 'N/A'}</span></div>
-        <div class="tt-row"><span class="tt-k">Ticket:</span> <span class="tt-v font-mono">${seat.assignedTo?.ticketId || 'N/A'}</span></div>
-        <div class="tt-row"><span class="tt-k">Status:</span> <span class="tt-v text-purple">Verified at Gate</span></div>
       `;
     }
 
@@ -457,7 +476,7 @@ export class SeatMap {
         ${extraDetail}
       </div>
       <div class="tt-footer">
-        ${seat.status === 'available' ? 'Tap to Lock & Assign' : 'Tap to View / Manage'}
+        ${seat.status === 'available' ? (isSelected ? 'Tap to Deselect' : 'Tap to Select') : 'Tap to View Details'}
       </div>
     `;
 

@@ -1,111 +1,82 @@
-// Assignment Modal (Hold state with 60-second TTL countdown & fast name/ID entry)
-import { generateTicketId, LOCK_TTL_MS } from '../utils/constants.js';
+// Single & Multi-Seat Assignment Modal Component
+import { generateTicketId } from '../utils/constants.js';
 import { syncEngine } from '../store/syncEngine.js';
 import { toast } from './Toast.js';
 
 export class AssignmentModal {
   constructor(containerId, onComplete) {
-    this.container = typeof containerId === 'string' ? document.getElementById(containerId) : containerId;
-    this.onComplete = onComplete;
-    this.currentSeat = null;
+    this.container = document.getElementById(containerId);
+    this.onComplete = onComplete || (() => {});
+    this.currentSeats = []; // Array of seat objects
     this.currentOrganizer = null;
     this.timerInterval = null;
-    this.ticketId = '';
+    this.remainingSeconds = 60;
+    this.ticketIds = {};
 
-    if (this.container) {
-      this.render();
-      this.bindEvents();
-    }
+    this.render();
+    this.bindEvents();
   }
 
   render() {
     this.container.innerHTML = `
       <div class="modal-backdrop" id="assign-backdrop">
-        <div class="modal-card modal-assign animate-pop-in">
+        <div class="modal-card animate-pop-in">
           <!-- Modal Header -->
           <div class="modal-header">
             <div class="modal-header-info">
               <div class="modal-badge-hold">
                 <span class="pulse-dot"></span>
-                <span>Active Hold</span>
+                <span>Active 60s Hold Lock</span>
               </div>
-              <h2 class="modal-title" id="assign-seat-title">Assign Seat</h2>
-              <p class="modal-subtitle" id="assign-seat-desc">Lock active for 60s. Enter guest details to confirm reservation.</p>
+              <h2 class="modal-title" id="assign-modal-title">Assign Seats</h2>
+              <p class="modal-subtitle">Enter attendee details to confirm reservation.</p>
             </div>
-            <button class="modal-close-btn" id="assign-close-btn" title="Release Hold & Close">&times;</button>
+            <button type="button" class="modal-close-btn" id="assign-close-btn">&times;</button>
           </div>
 
           <!-- TTL Hold Countdown Bar -->
           <div class="ttl-countdown-container">
             <div class="ttl-bar-header">
-              <span class="ttl-label">Hold Expiration:</span>
-              <span class="ttl-countdown-text" id="assign-ttl-text">60s</span>
+              <span class="ttl-label">Temporary Lock Expiring in:</span>
+              <span class="ttl-countdown-text" id="assign-countdown">60s</span>
             </div>
             <div class="ttl-progress-track">
-              <div class="ttl-progress-fill" id="assign-ttl-fill" style="width: 100%;"></div>
+              <div class="ttl-progress-fill" id="assign-progress-bar" style="width: 100%;"></div>
             </div>
           </div>
 
-          <!-- Seat Summary Card -->
-          <div class="seat-summary-grid">
-            <div class="summary-item">
-              <span class="item-label">Section</span>
-              <span class="item-val" id="assign-summary-section">Part 1</span>
-            </div>
-            <div class="summary-item">
-              <span class="item-label">Seat Code</span>
-              <span class="item-val highlight" id="assign-summary-code">A19</span>
-            </div>
-            <div class="summary-item">
-              <span class="item-label">Row</span>
-              <span class="item-val" id="assign-summary-row">Row A</span>
-            </div>
-            <div class="summary-item">
-              <span class="item-label">Wing / Column</span>
-              <span class="item-val" id="assign-summary-wing">Left Wing</span>
-            </div>
+          <!-- Selected Seats Chips List -->
+          <div class="selected-seats-badge-wrap" id="assign-seats-chips-wrap">
+            <!-- Dynamically populated -->
           </div>
 
-          <!-- Form Fields (Name & Generated Ticket ID only) -->
+          <!-- Form Fields -->
           <form id="assign-form" class="assign-form" autocomplete="off">
             <div class="form-group">
-              <label for="assign-guest-name" class="form-label">
-                <span>Guest Full Name</span>
+              <label for="assign-primary-name" class="form-label">
+                <span id="assign-name-label">Primary Guest / Group Name</span>
                 <span class="required-star">*</span>
               </label>
               <div class="input-wrapper">
                 <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 <input 
                   type="text" 
-                  id="assign-guest-name" 
+                  id="assign-primary-name" 
                   class="form-input" 
-                  placeholder="e.g. Sarah Connor" 
+                  placeholder="e.g. Sarah Connor / Smith Family" 
                   required 
                   autofocus
                 />
               </div>
             </div>
 
-            <div class="form-group">
-              <label for="assign-ticket-id" class="form-label">
-                <span>Ticket Code (Auto-Generated)</span>
-                <span class="code-tag">System ID</span>
+            <!-- Dynamic Ticket Codes List -->
+            <div class="form-group" id="assign-tickets-group">
+              <label class="form-label">
+                <span>Assigned Ticket Codes</span>
+                <span class="code-tag">Auto-Generated</span>
               </label>
-              <div class="input-group-addon">
-                <div class="input-wrapper flex-1">
-                  <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                  <input 
-                    type="text" 
-                    id="assign-ticket-id" 
-                    class="form-input font-mono" 
-                    readonly
-                  />
-                </div>
-                <button type="button" class="btn-addon" id="assign-regen-btn" title="Generate New Ticket ID">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                  <span>New ID</span>
-                </button>
-              </div>
+              <div class="tickets-pills-list" id="assign-tickets-list"></div>
             </div>
 
             <!-- Modal Action Buttons -->
@@ -115,7 +86,7 @@ export class AssignmentModal {
               </button>
               <div class="action-group-right">
                 <button type="submit" class="btn btn-primary" id="assign-confirm-btn">
-                  Confirm Reservation
+                  Confirm All Reservations
                 </button>
               </div>
             </div>
@@ -129,14 +100,10 @@ export class AssignmentModal {
     const backdrop = this.container.querySelector('#assign-backdrop');
     const closeBtn = this.container.querySelector('#assign-close-btn');
     const cancelBtn = this.container.querySelector('#assign-cancel-btn');
-    const regenBtn = this.container.querySelector('#assign-regen-btn');
     const form = this.container.querySelector('#assign-form');
 
     const handleClose = () => {
-      if (this.currentSeat && this.currentOrganizer) {
-        syncEngine.releaseSeatLock(this.currentSeat.id, this.currentOrganizer.id);
-        toast.info('Hold Released', `Seat ${this.currentSeat.seatCode} is now available.`);
-      }
+      this.releaseCurrentHolds();
       this.close();
     };
 
@@ -147,121 +114,149 @@ export class AssignmentModal {
       if (e.target === backdrop) handleClose();
     });
 
-    regenBtn.addEventListener('click', () => {
-      this.ticketId = generateTicketId();
-      this.container.querySelector('#assign-ticket-id').value = this.ticketId;
-    });
-
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const nameInput = this.container.querySelector('#assign-guest-name');
-      const name = nameInput.value.trim();
+      const primaryName = this.container.querySelector('#assign-primary-name').value.trim();
 
-      if (!name) {
-        toast.error('Name Required', 'Please enter the attendee full name.');
-        nameInput.focus();
+      if (!primaryName) {
+        toast.error('Name Required', 'Please enter a guest name.');
         return;
       }
 
-      const attendeeData = {
-        name,
-        ticketId: this.ticketId
-      };
+      if (this.currentSeats.length === 0) return;
 
-      const result = await syncEngine.reserveSeat(
-        this.currentSeat.id, 
-        attendeeData, 
-        this.currentOrganizer, 
-        false
-      );
+      // Prepare batch assignments
+      const assignments = this.currentSeats.map((seat, index) => {
+        const guestName = this.currentSeats.length > 1 ? `${primaryName} (Guest ${index + 1})` : primaryName;
+        return {
+          seatId: seat.id,
+          name: guestName,
+          ticketId: this.ticketIds[seat.id] || generateTicketId()
+        };
+      });
 
-      if (result.success) {
+      const res = await syncEngine.reserveMultipleSeats(assignments, this.currentOrganizer);
+
+      if (res.success) {
         toast.success(
-          'Seat Reserved!',
-          `Seat ${this.currentSeat.seatCode} assigned to ${attendeeData.name} (${attendeeData.ticketId})`
+          'Reservations Confirmed!',
+          `Successfully assigned ${res.count} seat(s) to ${primaryName}.`
         );
         this.stopHoldTimer();
         this.close();
-        if (this.onComplete) this.onComplete(result.seat);
+        if (this.onComplete) this.onComplete(this.currentSeats);
       } else {
-        toast.conflict(result.error);
+        toast.conflict('Some seats could not be booked due to a concurrent conflict.');
         this.stopHoldTimer();
         this.close();
       }
     });
   }
 
-  open(seat, organizer) {
-    this.currentSeat = seat;
+  open(seats, organizer) {
+    this.currentSeats = Array.isArray(seats) ? seats : [seats];
     this.currentOrganizer = organizer;
-    this.ticketId = generateTicketId();
+    this.ticketIds = {};
 
-    const title = this.container.querySelector('#assign-seat-title');
-    const desc = this.container.querySelector('#assign-seat-desc');
-    const summarySection = this.container.querySelector('#assign-summary-section');
-    const summaryCode = this.container.querySelector('#assign-summary-code');
-    const summaryRow = this.container.querySelector('#assign-summary-row');
-    const summaryWing = this.container.querySelector('#assign-summary-wing');
-    const nameInput = this.container.querySelector('#assign-guest-name');
-    const ticketInput = this.container.querySelector('#assign-ticket-id');
+    const titleEl = this.container.querySelector('#assign-modal-title');
+    const chipsWrap = this.container.querySelector('#assign-seats-chips-wrap');
+    const ticketsList = this.container.querySelector('#assign-tickets-list');
+    const nameInput = this.container.querySelector('#assign-primary-name');
+    const nameLabel = this.container.querySelector('#assign-name-label');
+    const confirmBtn = this.container.querySelector('#assign-confirm-btn');
 
-    const wingLabel = seat.wing === 'left' ? 'Left Wing (Odds)' : seat.wing === 'center' ? 'Center Section' : 'Right Wing (Evens)';
+    if (this.currentSeats.length === 1) {
+      const s = this.currentSeats[0];
+      titleEl.textContent = `Assign Seat ${s.seatCode}`;
+      nameLabel.textContent = 'Guest Full Name';
+      confirmBtn.textContent = 'Confirm Reservation';
+      this.ticketIds[s.id] = generateTicketId();
+    } else {
+      titleEl.textContent = `Assign ${this.currentSeats.length} Seats`;
+      nameLabel.textContent = 'Primary Contact / Group Name';
+      confirmBtn.textContent = `Confirm ${this.currentSeats.length} Reservations`;
+      this.currentSeats.forEach(s => {
+        this.ticketIds[s.id] = generateTicketId();
+      });
+    }
 
-    title.textContent = `Assign Seat ${seat.seatCode}`;
-    desc.textContent = `Held by ${organizer.name}. Finalize attendee details before the 60s hold expires.`;
-    summarySection.textContent = seat.section || 'Auditorium';
-    summaryCode.textContent = seat.seatCode;
-    summaryRow.textContent = `Row ${seat.row}`;
-    summaryWing.textContent = wingLabel;
-    
+    // Render chips
+    chipsWrap.innerHTML = this.currentSeats.map(s => `
+      <span class="seat-assign-chip">
+        <strong>${s.seatCode}</strong>
+        <span class="chip-wing">${s.wing === 'left' ? 'Left' : s.wing === 'center' ? 'Center' : 'Right'}</span>
+      </span>
+    `).join('');
+
+    // Render ticket list
+    ticketsList.innerHTML = this.currentSeats.map(s => `
+      <div class="ticket-row-pill">
+        <span class="pill-seat-code">${s.seatCode}</span>
+        <span class="pill-tck font-mono">${this.ticketIds[s.id]}</span>
+      </div>
+    `).join('');
+
     nameInput.value = '';
-    ticketInput.value = this.ticketId;
-
+    this.startHoldTimer();
     this.container.querySelector('#assign-backdrop').classList.add('active');
     setTimeout(() => nameInput.focus(), 150);
-
-    this.startCountdown();
   }
 
-  startCountdown() {
-    clearInterval(this.timerInterval);
-    const ttlText = this.container.querySelector('#assign-ttl-text');
-    const ttlFill = this.container.querySelector('#assign-ttl-fill');
+  startHoldTimer() {
+    this.stopHoldTimer();
+    this.remainingSeconds = 60;
+    this.updateTimerDisplay();
 
-    const updateTimer = () => {
-      if (!this.currentSeat || !this.currentSeat.lockedUntil) return;
-      const remainingMs = this.currentSeat.lockedUntil - Date.now();
+    this.timerInterval = setInterval(() => {
+      this.remainingSeconds -= 1;
+      this.updateTimerDisplay();
 
-      if (remainingMs <= 0) {
-        clearInterval(this.timerInterval);
-        toast.warning('Hold Expired', `Your 60-second hold on Seat ${this.currentSeat.seatCode} has expired.`);
-        this.close(true);
-        return;
+      if (this.remainingSeconds <= 0) {
+        this.stopHoldTimer();
+        toast.warning('Hold Expired', '60s hold time has expired. Seats returned to available.');
+        this.close();
       }
-
-      const seconds = Math.ceil(remainingMs / 1000);
-      const percent = Math.max(0, Math.min(100, (remainingMs / LOCK_TTL_MS) * 100));
-
-      ttlText.textContent = `${seconds}s`;
-      ttlFill.style.width = `${percent}%`;
-
-      if (seconds <= 15) {
-        ttlFill.classList.add('urgent');
-        ttlText.classList.add('urgent');
-      } else {
-        ttlFill.classList.remove('urgent');
-        ttlText.classList.remove('urgent');
-      }
-    };
-
-    updateTimer();
-    this.timerInterval = setInterval(updateTimer, 500);
+    }, 1000);
   }
 
-  close(skipRelease = false) {
-    clearInterval(this.timerInterval);
+  updateTimerDisplay() {
+    const text = this.container.querySelector('#assign-countdown');
+    const bar = this.container.querySelector('#assign-progress-bar');
+    if (!text || !bar) return;
+
+    text.textContent = `${this.remainingSeconds}s`;
+    const pct = Math.max(0, (this.remainingSeconds / 60) * 100);
+    bar.style.width = `${pct}%`;
+
+    if (this.remainingSeconds <= 15) {
+      text.classList.add('urgent');
+      bar.classList.add('urgent');
+    } else {
+      text.classList.remove('urgent');
+      bar.classList.remove('urgent');
+    }
+  }
+
+  stopHoldTimer() {
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+      this.timerInterval = null;
+    }
+  }
+
+  releaseCurrentHolds() {
+    this.stopHoldTimer();
+    if (this.currentSeats.length > 0 && this.currentOrganizer) {
+      const ids = this.currentSeats.map(s => s.id);
+      syncEngine.releaseMultipleLocks(ids, this.currentOrganizer.id);
+      toast.info('Hold Released', `Selected seat holds were released.`);
+    }
+  }
+
+  close() {
+    this.stopHoldTimer();
     const backdrop = this.container.querySelector('#assign-backdrop');
     if (backdrop) backdrop.classList.remove('active');
-    this.currentSeat = null;
+    this.currentSeats = [];
   }
 }

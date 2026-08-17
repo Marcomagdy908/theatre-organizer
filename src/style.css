@@ -920,6 +920,183 @@ body {
   color: #111827;
   animation: pulse-hold 2s infinite;
 }
+
+/* 🔷 Multi-Seat Selected (Hold Active) */
+.seat-node.is-selected .seat-chair-back {
+  background: rgba(6, 182, 212, 0.6) !important;
+}
+.seat-node.is-selected .seat-chair-cushion {
+  background: linear-gradient(180deg, #06b6d4, #0891b2) !important;
+  border: 2px solid #67e8f9 !important;
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.6) !important;
+  color: #fff !important;
+  font-weight: 800 !important;
+}
+.seat-select-icon {
+  font-weight: 900;
+  font-size: 0.7rem;
+}
+
+/* Floating Bottom Selection Dock */
+.selection-dock {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(120%);
+  z-index: 900;
+  width: calc(100% - 32px);
+  max-width: 620px;
+  background: rgba(14, 18, 28, 0.94);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(6, 182, 212, 0.4);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8), 0 0 24px rgba(6, 182, 212, 0.25);
+  padding: 10px 18px;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
+}
+
+.selection-dock.visible {
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.selection-dock-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.selection-dock-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.selection-count-badge {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #06b6d4, #6366f1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.selection-meta {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dock-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94a3b8;
+}
+
+.dock-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow-x: auto;
+  padding-top: 2px;
+  scrollbar-width: none;
+}
+
+.dock-chips::-webkit-scrollbar { display: none; }
+
+.dock-seat-chip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: rgba(6, 182, 212, 0.15);
+  color: #67e8f9;
+  border: 1px solid rgba(6, 182, 212, 0.35);
+  padding: 1px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.selection-dock-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Multi-Seat Assignment Modal Chips */
+.selected-seats-badge-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+.seat-assign-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  color: #fff;
+}
+
+.chip-wing {
+  font-size: 0.65rem;
+  color: #94a3b8;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.tickets-pills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 120px;
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.ticket-row-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.ticket-row-pill:last-child {
+  border-bottom: none;
+}
+
+.pill-seat-code {
+  font-weight: 700;
+  color: #67e8f9;
+}
+
+.pill-tck {
+  color: #a5b4fc;
+}
 .seat-lock-badge {
   position: absolute;
   top: -7px;

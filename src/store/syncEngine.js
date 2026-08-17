@@ -648,7 +648,7 @@ class SyncEngine {
 
     this.saveLocalSeats();
 
-    const logItem = {
+        const logItem = {
       id: 'log_' + Date.now(),
       time: now,
       type: 'booking',
@@ -659,6 +659,33 @@ class SyncEngine {
     this.notifyListeners();
 
     return { success: true, seat };
+  }
+
+  // 3b. Batch Multi-Seat Reservation Commit
+  async reserveMultipleSeats(assignments, organizer) {
+    const results = [];
+    for (const item of assignments) {
+      const res = await this.reserveSeat(
+        item.seatId, 
+        { name: item.name, ticketId: item.ticketId }, 
+        organizer
+      );
+      results.push(res);
+    }
+    const successful = results.filter(r => r.success);
+    return { 
+      success: successful.length > 0, 
+      count: successful.length,
+      total: assignments.length,
+      results 
+    };
+  }
+
+  // 3c. Batch Release Multiple Holds
+  async releaseMultipleLocks(seatIds, organizerId) {
+    for (const seatId of seatIds) {
+      await this.releaseSeatLock(seatId, organizerId);
+    }
   }
 
   // 4. Front-of-house Check-in
