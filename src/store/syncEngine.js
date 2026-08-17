@@ -54,9 +54,27 @@ class SyncEngine {
     }
   }
 
-  // Load saved Firebase config if available
+  // Load Firebase config from .env or localStorage
   loadFirebaseConfig() {
     try {
+      // 1. Check Vite Environment Variables (.env)
+      const envApiKey = import.meta.env.VITE_FIREBASE_API_KEY;
+      const envProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+
+      if (envApiKey && envProjectId && envApiKey.trim() !== '') {
+        const envConfig = {
+          apiKey: envApiKey.trim(),
+          authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || `${envProjectId.trim()}.firebaseapp.com`,
+          projectId: envProjectId.trim(),
+          storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || `${envProjectId.trim()}.appspot.com`,
+          messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || '',
+          appId: import.meta.env.VITE_FIREBASE_APP_ID?.trim() || ''
+        };
+        this.initFirebase(envConfig);
+        return;
+      }
+
+      // 2. Check localStorage saved config from UI modal
       const saved = localStorage.getItem(STORAGE_KEY_FIREBASE_CONFIG);
       if (saved) {
         const config = JSON.parse(saved);
