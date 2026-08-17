@@ -1,6 +1,5 @@
-// Main Application Entry Point
 import './style.css';
-import { ORGANIZERS } from './utils/constants.js';
+import { getOrCreateOrganizerSession } from './utils/constants.js';
 import { syncEngine } from './store/syncEngine.js';
 import { OrganizerBar } from './components/OrganizerBar.js';
 import { StatsDashboard } from './components/StatsDashboard.js';
@@ -14,7 +13,7 @@ import { toast } from './components/Toast.js';
 
 class App {
   constructor() {
-    this.currentOrganizer = this.detectInitialOrganizer();
+    this.currentOrganizer = getOrCreateOrganizerSession();
     this.seatMap = null;
     this.toolbar = null;
     this.statsDashboard = null;
@@ -25,18 +24,6 @@ class App {
     this.activityFeed = null;
 
     this.init();
-  }
-
-  detectInitialOrganizer() {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const orgParam = urlParams.get('org');
-      if (orgParam) {
-        const found = ORGANIZERS.find(o => o.id === orgParam);
-        if (found) return found;
-      }
-    } catch (e) {}
-    return ORGANIZERS[0]; // Default: Alice
   }
 
   init() {

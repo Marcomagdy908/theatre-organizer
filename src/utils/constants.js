@@ -8,40 +8,49 @@ export const EVENT_TITLE = 'SEF_امرا جديدا';
 
 export const LOCK_TTL_MS = 60000; // 60-second hold lock TTL
 
-export const ORGANIZERS = [
-  {
-    id: 'org_1',
-    name: 'Organizer 1',
-    role: 'Organizer',
-    avatar: 'O1',
-    color: '#10B981', // Emerald
-    badge: 'Organizer'
-  },
-  {
-    id: 'org_2',
-    name: 'Organizer 2',
-    role: 'Organizer',
-    avatar: 'O2',
-    color: '#6366F1', // Indigo
-    badge: 'Organizer'
-  },
-  {
-    id: 'org_3',
-    name: 'Organizer 3',
-    role: 'Organizer',
-    avatar: 'O3',
-    color: '#F59E0B', // Amber
-    badge: 'Organizer'
-  },
-  {
-    id: 'org_4',
-    name: 'Organizer 4',
-    role: 'Organizer',
-    avatar: 'O4',
-    color: '#EC4899', // Pink
-    badge: 'Organizer'
-  }
+const ORGANIZER_COLORS = [
+  '#10B981', // Emerald
+  '#6366F1', // Indigo
+  '#F59E0B', // Amber
+  '#EC4899', // Pink
+  '#3B82F6', // Blue
+  '#8B5CF6', // Purple
+  '#14B8A6', // Teal
+  '#F97316'  // Orange
 ];
+
+// Auto-generate or restore a unique session organizer for every device/tab
+export function getOrCreateOrganizerSession() {
+  try {
+    const sessionKey = 'theatre_organizer_active_session_v2';
+    const stored = sessionStorage.getItem(sessionKey);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+    
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    const color = ORGANIZER_COLORS[Math.floor(Math.random() * ORGANIZER_COLORS.length)];
+    const newSession = {
+      id: `org_${randomNum}`,
+      name: `Organizer #${randomNum}`,
+      role: 'Organizer',
+      avatar: `#${randomNum.toString().slice(-2)}`,
+      color: color,
+      badge: 'Organizer'
+    };
+    sessionStorage.setItem(sessionKey, JSON.stringify(newSession));
+    return newSession;
+  } catch (e) {
+    return {
+      id: `org_${Date.now()}`,
+      name: 'Organizer',
+      role: 'Organizer',
+      avatar: 'ORG',
+      color: '#10B981',
+      badge: 'Organizer'
+    };
+  }
+}
 
 // Generate a random ticket ID like TCK-8821
 export function generateTicketId() {
@@ -218,7 +227,7 @@ export function generateInitialSeats() {
         row,
         number: num,
         seatCode,
-        wing: colWing, // 'left' | 'center' | 'right'
+        wing: colWing,
         tier: isVip ? 'VIP Tier' : tier,
         isAccessible,
         status: 'available',
