@@ -22,7 +22,7 @@ export class OrganizerBar {
           <div class="brand-logo">
             <div class="brand-icon">🎭</div>
             <div class="brand-text">
-              <h1 class="brand-title">OPERA ROYALE</h1>
+              <h1 class="brand-title">SEF_امرا جديدا</h1>
               <span class="brand-subtitle">Real-Time Theater Seat Management</span>
             </div>
           </div>

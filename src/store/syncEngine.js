@@ -10,10 +10,10 @@ import {
   setDoc,
   writeBatch
 } from 'firebase/firestore';
-import { LOCK_TTL_MS, generateInitialSeats } from '../utils/constants.js';
+import { LOCK_TTL_MS, generateInitialSeats, EVENT_ID, EVENT_TITLE } from '../utils/constants.js';
 
-const STORAGE_KEY_SEATS = 'theatre_organizer_seats_v1';
-const STORAGE_KEY_LOGS = 'theatre_organizer_logs_v1';
+const STORAGE_KEY_SEATS = 'theatre_sef_amran_jadidan_seats_v1';
+const STORAGE_KEY_LOGS = 'theatre_sef_amran_jadidan_logs_v1';
 const STORAGE_KEY_FIREBASE_CONFIG = 'theatre_firebase_config_v1';
 
 class SyncEngine {
@@ -100,7 +100,7 @@ class SyncEngine {
       localStorage.setItem(STORAGE_KEY_FIREBASE_CONFIG, JSON.stringify(config));
 
       // Listen to Firestore real-time snapshot
-      const seatsCol = collection(this.firestore, 'theater_events', 'evt_grand_theater_2026', 'seats');
+      const seatsCol = collection(this.firestore, 'theater_events', EVENT_ID, 'seats');
       this.unsubscribeFirestore = onSnapshot(seatsCol, (snapshot) => {
         if (snapshot.empty) {
           // If Firestore is empty, seed initial seats
@@ -161,15 +161,14 @@ class SyncEngine {
     try {
       const initial = generateInitialSeats();
       const batch = writeBatch(this.firestore);
-      const eventId = 'evt_grand_theater_2026';
       
       Object.values(initial).forEach((seat) => {
-        const seatRef = doc(this.firestore, 'theater_events', eventId, 'seats', seat.id);
+        const seatRef = doc(this.firestore, 'theater_events', EVENT_ID, 'seats', seat.id);
         batch.set(seatRef, seat);
       });
 
       await batch.commit();
-      console.log('Successfully seeded Firestore with 160 theater seats');
+      console.log(`Successfully seeded Firestore for ${EVENT_TITLE}`);
     } catch (e) {
       console.error('Failed to seed Firestore:', e);
     }
@@ -193,21 +192,9 @@ class SyncEngine {
         this.logs = [
           {
             id: 'log_init',
-            time: Date.now() - 3600000,
+            time: Date.now(),
             type: 'system',
-            text: 'Venue system initialized with 160 seats across Orchestra, Mezzanine, Balcony & VIP Boxes.'
-          },
-          {
-            id: 'log_init_res',
-            time: Date.now() - 1800000,
-            type: 'booking',
-            text: 'Sarah Connor reserved Seat A-8 (Ticket: TCK-8821)'
-          },
-          {
-            id: 'log_init_checkin',
-            time: Date.now() - 600000,
-            type: 'checkin',
-            text: 'Sarah Connor checked in at Front Gate'
+            text: `Event "${EVENT_TITLE}" initialized. All seats available for assignment.`
           }
         ];
       }

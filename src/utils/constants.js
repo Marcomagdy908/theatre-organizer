@@ -1,37 +1,41 @@
 // Venue Layout & System Constants
+// Event: SEF_امرا جديدا
 // Exact Theater Layout: Rows A-Q across Part 1 (Front: A-H) & Part 2 (Rear: I-Q)
 // Structured in 3 Columns: Left Wing (Odds), Center Section, Right Wing (Evens)
+
+export const EVENT_ID = 'evt_sef_amran_jadidan_2026';
+export const EVENT_TITLE = 'SEF_امرا جديدا';
 
 export const LOCK_TTL_MS = 60000; // 60-second hold lock TTL
 
 export const ORGANIZERS = [
   {
-    id: 'org_alice',
-    name: 'Organizer 1 (Alice)',
+    id: 'org_1',
+    name: 'Organizer 1',
     role: 'Organizer',
     avatar: 'O1',
     color: '#10B981', // Emerald
     badge: 'Organizer'
   },
   {
-    id: 'org_bob',
-    name: 'Organizer 2 (Bob)',
+    id: 'org_2',
+    name: 'Organizer 2',
     role: 'Organizer',
     avatar: 'O2',
     color: '#6366F1', // Indigo
     badge: 'Organizer'
   },
   {
-    id: 'org_charlie',
-    name: 'Organizer 3 (Charlie)',
+    id: 'org_3',
+    name: 'Organizer 3',
     role: 'Organizer',
     avatar: 'O3',
     color: '#F59E0B', // Amber
     badge: 'Organizer'
   },
   {
-    id: 'org_diana',
-    name: 'Organizer 4 (Diana)',
+    id: 'org_4',
+    name: 'Organizer 4',
     role: 'Organizer',
     avatar: 'O4',
     color: '#EC4899', // Pink
@@ -192,7 +196,7 @@ export const THEATER_ROW_DEFINITIONS = [
   }
 ];
 
-// Generate the initial seats matching the exact layout
+// Generate clean initial seats (ZERO mock data, 100% available)
 export function generateInitialSeats() {
   const seats = {};
 
@@ -209,7 +213,7 @@ export function generateInitialSeats() {
 
       seats[id] = {
         id,
-        eventId: 'evt_grand_theater_2026',
+        eventId: EVENT_ID,
         section: sectionName,
         row,
         number: num,
@@ -221,6 +225,7 @@ export function generateInitialSeats() {
         assignedTo: null,
         lockedBy: null,
         lockedUntil: null,
+        checkedInAt: null,
         updatedAt: Date.now()
       };
     };
@@ -228,29 +233,6 @@ export function generateInitialSeats() {
     left.forEach(num => createSeat(num, 'left'));
     center.forEach(num => createSeat(num, 'center'));
     right.forEach(num => createSeat(num, 'right'));
-  });
-
-  // Pre-populate sample guest reservations
-  const sampleGuests = [
-    { seatId: 'seat_B_1', name: 'Sarah Connor', ticketId: 'TCK-8821', status: 'checked_in' },
-    { seatId: 'seat_B_2', name: 'John Connor', ticketId: 'TCK-8822', status: 'checked_in' },
-    { seatId: 'seat_C_3', name: 'Michael Corleone', ticketId: 'TCK-1972', status: 'reserved' },
-    { seatId: 'seat_C_4', name: 'Kay Adams', ticketId: 'TCK-1973', status: 'reserved' },
-    { seatId: 'seat_D_1', name: 'Arthur Dent', ticketId: 'TCK-4242', status: 'reserved' },
-    { seatId: 'seat_G_5', name: 'Elena Rostova', ticketId: 'TCK-5510', status: 'reserved' },
-    { seatId: 'seat_I_1', name: 'Marcus Aurelius', ticketId: 'TCK-0180', status: 'reserved' },
-    { seatId: 'seat_A_11', name: 'Bruce Wayne', ticketId: 'TCK-1939', status: 'checked_in' },
-    { seatId: 'seat_A_10', name: 'Alfred Pennyworth', ticketId: 'TCK-1940', status: 'checked_in' }
-  ];
-
-  sampleGuests.forEach(g => {
-    if (seats[g.seatId]) {
-      seats[g.seatId].status = g.status;
-      seats[g.seatId].assignedTo = {
-        name: g.name,
-        ticketId: g.ticketId
-      };
-    }
   });
 
   return seats;
