@@ -678,11 +678,33 @@ body {
 
 .theater-seating-scroll-wrapper {
   width: 100%;
-  overflow-x: auto;
+  overflow-x: auto !important;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  padding: 10px 4px 20px;
-  display: flex;
-  justify-content: center;
+  padding: 10px 10px 24px;
+  display: block;
+  cursor: grab;
+  scrollbar-width: thin;
+  scrollbar-color: #6366f1 rgba(255, 255, 255, 0.08);
+}
+
+.theater-seating-scroll-wrapper.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.theater-seating-scroll-wrapper::-webkit-scrollbar {
+  height: 8px;
+}
+
+.theater-seating-scroll-wrapper::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius-pill);
+}
+
+.theater-seating-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  border-radius: var(--radius-pill);
 }
 
 .theater-seating-layout {
@@ -690,10 +712,13 @@ body {
   flex-direction: column;
   gap: 28px;
   align-items: center;
+  margin: 0 auto;
   transform: scale(var(--grid-zoom, 1));
   transform-origin: top center;
   transition: transform 0.2s ease;
   min-width: max-content;
+  width: max-content;
+  padding: 0 20px;
 }
 
 .theater-seating-layout.is-focused-wing {

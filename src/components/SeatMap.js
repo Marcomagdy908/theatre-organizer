@@ -208,6 +208,40 @@ export class SeatMap {
         this.setZoom(parseFloat(btn.dataset.zoom));
       });
     });
+
+    // Enable drag-to-scroll along X axis
+    const scrollWrapper = this.container.querySelector('.theater-seating-scroll-wrapper');
+    if (scrollWrapper) {
+      let isDown = false;
+      let startX;
+      let scrollLeft;
+
+      scrollWrapper.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.seat-node')) return;
+        isDown = true;
+        scrollWrapper.classList.add('is-dragging');
+        startX = e.pageX - scrollWrapper.offsetLeft;
+        scrollLeft = scrollWrapper.scrollLeft;
+      });
+
+      scrollWrapper.addEventListener('mouseleave', () => {
+        isDown = false;
+        scrollWrapper.classList.remove('is-dragging');
+      });
+
+      scrollWrapper.addEventListener('mouseup', () => {
+        isDown = false;
+        scrollWrapper.classList.remove('is-dragging');
+      });
+
+      scrollWrapper.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - scrollWrapper.offsetLeft;
+        const walk = (x - startX) * 1.5;
+        scrollWrapper.scrollLeft = scrollLeft - walk;
+      });
+    }
   }
 
   getRowsToRender() {
