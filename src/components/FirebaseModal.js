@@ -110,15 +110,29 @@ export class FirebaseModal {
         try {
           let config;
           try {
-            config = JSON.parse(raw);
-          } catch {
-            const jsonString = raw
-              .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ')
-              .replace(/'/g, '"');
-            config = JSON.parse(jsonString);
+            let cleaned = raw;
+            if (cleaned.includes('=')) {
+              cleaned = cleaned.substring(cleaned.indexOf('=') + 1);
+            }
+            cleaned = cleaned.trim();
+            if (cleaned.endsWith(';')) {
+              cleaned = cleaned.slice(0, -1).trim();
+            }
+            // Safely evaluate JS object literal
+            config = new Function(`return (${cleaned})`)();
+          } catch (evalErr) {
+            try {
+              config = JSON.parse(raw);
+            } catch {
+              const jsonString = raw
+                .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2": ')
+                .replace(/'/g, '"')
+                .replace(/,\s*}/g, '}');
+              config = JSON.parse(jsonString);
+            }
           }
 
-          if (!config.apiKey || !config.projectId) {
+          if (!config || !config.apiKey || !config.projectId) {
             throw new Error('Config must contain at least "apiKey" and "projectId"');
           }
 
@@ -126,14 +140,14 @@ export class FirebaseModal {
           const res = await syncEngine.initFirebase(config);
 
           if (res.success) {
-            toast.success('Connected!', `Successfully connected to Firebase Firestore (${config.projectId}).`);
-            this.onStatusChange('firebase');
+            toast.success('Connected!', `Successfully connected to Firebase (${config.projectId}).`);
+            this.onStatusChange(res.mode || 'rtdb');
             this.close();
           } else {
-            toast.error('Connection Failed', res.error);
+            toast.error('Connection Failed', res.error || 'Check database permissions');
           }
         } catch (err) {
-          toast.error('Invalid Config', 'Could not parse config. Please verify format.');
+          toast.error('Invalid Config', err.message || 'Could not parse config. Please verify format.');
         }
       });
     }
