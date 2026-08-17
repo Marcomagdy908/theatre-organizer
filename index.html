@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎭</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Real-Time Theater Seat Management System with Firebase Concurrency Control, Atomic Double-Booking Prevention, and Interactive Seating Map." />
+    <title>Opera Royale — Real-Time Theater Seat Management</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Organizer Header Bar -->
+      <div id="organizer-bar-mount"></div>
+
+      <main class="main-wrapper">
+        <!-- Live Venue KPI Stats Bar -->
+        <div id="stats-dashboard-mount"></div>
+
+        <!-- Search, Section Tabs, and Status Filters -->
+        <div id="toolbar-mount"></div>
+
+        <!-- Interactive Visual Theater Grid -->
+        <div class="theater-viewport">
+          <div id="seat-map-mount"></div>
+        </div>
+      </main>
+
+      <!-- Modals and Drawers Mount Points -->
+      <div id="assignment-modal-mount"></div>
+      <div id="details-modal-mount"></div>
+      <div id="firebase-modal-mount"></div>
+      <div id="activity-feed-mount"></div>
+      <div id="toast-container" class="toast-container"></div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
