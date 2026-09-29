@@ -1,6 +1,6 @@
 # 🎭 Opera Royale — Real-Time Theater Seat Management System
 
-A real-time theater seat management system designed for venue organizers, box-office teams, and front-of-house staff. The system guarantees **zero double-booking** through atomic concurrency control, provides **sub-100ms real-time synchronization** via Firebase Firestore and Local Real-Time Mesh, and visualizes the complete **3-Column Rows A–Q** theater layout.
+A real-time theater seat management system designed for venue organizers, box-office teams, and front-of-house staff. The system uses temporary seat holds and cloud transactions to coordinate bookings, supports synchronization through Firebase and a local browser mesh, and visualizes the complete **3-Column Rows A–Q** theater layout.
 
 ---
 
@@ -46,19 +46,27 @@ The theater layout is organized into **two vertical sections** and **three horiz
 }
 ```
 
-### 2. Concurrency Control (Zero Double-Booking)
+### 2. Concurrency Control & Seat Holds
 - **Atomic 60s Hold Lock:** Clicking an available seat executes an atomic transaction lock with an animated 60s TTL countdown.
 - **Collision Protection:** If another organizer attempts to select the seat at the exact same moment, the system rejects the second request and displays a collision alert toast.
 - **Auto-Expiration:** If details aren't submitted within 60s, the seat automatically reverts to `available`.
 - **Atomic Booking Commit:** Confirms the reservation with `{ name, ticketId }` only if the organizer holds the active lock.
 
-### 3. Dual Synchronization
-- **Zero-Config Local Mesh (`BroadcastChannel` + `localStorage`):** Seamless real-time synchronization between browser tabs and windows without setup.
+### 3. Synchronization Modes
+- **Local Browser Mesh (`BroadcastChannel` + `localStorage`):** Seamless real-time synchronization between browser tabs and windows without setup.
 - **Firebase Firestore (`onSnapshot` + `runTransaction`):** Connects to cloud Firestore for cross-device global synchronization via the in-app Firebase setup modal.
 
 ---
 
 ## 🚀 Quick Start & Development
+
+Use Node.js 22.12 or later and npm.
+
+```bash
+git clone https://github.com/Marcomagdy908/theatre-organizer.git
+cd theatre-organizer
+```
+
 
 ```bash
 # 1. Install dependencies
@@ -72,6 +80,10 @@ npm run build
 ```
 
 ---
+
+## ⚙️ Configuration and mode limits
+
+The sync engine supports Firebase Realtime Database, Firestore, and local browser synchronization. Configure your own Firebase project using `.env.example` or the in-app setup modal. Local mesh updates synchronize tabs on the same browser origin; cross-device collaboration needs a shared cloud database. Local storage synchronization has different concurrency guarantees from cloud transactions. No synchronization latency benchmark is claimed here.
 
 ## 🌐 Deploy to Production
 
@@ -101,3 +113,18 @@ All organizers have unified equal access with full permissions across all sectio
 - **Organizer 2 (Bob)**
 - **Organizer 3 (Charlie)**
 - **Organizer 4 (Diana)**
+
+
+## 🗂️ Project map
+
+| Path | Purpose |
+| --- | --- |
+| `src/main.js` | Application coordination |
+| `src/components/` | Seat map, toolbar, dashboards, and modals |
+| `src/store/syncEngine.js` | Storage, cloud sync, and seat holds |
+| `src/utils/constants.js` | Venue layout and organizer sessions |
+
+
+---
+
+[Marco Magdy](https://github.com/Marcomagdy908) · [More projects](https://github.com/Marcomagdy908?tab=repositories)
